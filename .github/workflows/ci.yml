@@ -32,5 +32,8 @@ jobs:
       - name: Type-check extension
         run: npm run typecheck
 
+      - name: Test council provider
+        run: npm test
+
       - name: Build extension
         run: npm run build

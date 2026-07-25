@@ -66,19 +66,29 @@ Every native patch must have:
 4. an automated regression check;
 5. a documented rebase strategy.
 
-## Initial extension boundary
+## Current extension boundary
 
-The first extension exposes one command:
+The extension exposes one command:
 
 ```text
 Pets Council: Open Council
 ```
 
-It opens a panel presenting the four roles. There is no model call, filesystem write, project indexing, autonomous action, or Codex dependency in this first slice.
+It opens an interactive panel backed by a deterministic mock provider. The current slice includes:
 
-## Proposed turn contract
+- typed `CouncilTurn`, `CouncilSuggestion`, `CouncilRoleReview`, and `CouncilReview` contracts;
+- one shared sample turn;
+- all four roles in a stable order;
+- zero to two suggestions per role;
+- an intentionally silent role;
+- a local composer filled only after a suggestion click;
+- an explicit copy action through the extension host.
 
-The next slice should introduce a model-independent contract similar to:
+There is still no model call, filesystem write, project indexing, autonomous action, or Codex dependency.
+
+## Turn contract
+
+The model-independent contract is implemented in `extensions/pets-council/src/domain.ts`:
 
 ```ts
 type CouncilTurn = {
@@ -92,20 +102,32 @@ type CouncilTurn = {
   };
   git?: {
     branch?: string;
-    changedFiles: string[];
+    changedFiles: readonly string[];
     diffSummary?: string;
   };
 };
 
 type CouncilSuggestion = {
+  id: string;
   role: 'architect' | 'guardian' | 'strategist' | 'notetaker';
   title: string;
   rationale: string;
-  prompt?: string;
+  prompt: string;
+  actionLabel: string;
 };
 ```
 
-The UI must render zero suggestions without treating that as an error. Silence is a valid council response when a role has nothing useful to add.
+The mock provider is deterministic: the same turn produces the same review. The UI renders zero suggestions without treating that as an error. Silence is a valid council response when a role has nothing useful to add.
+
+## Webview trust boundary
+
+The webview owns local prompt preparation and editing. Its only extension-host message is:
+
+```ts
+{ type: 'copyPrompt', value: string }
+```
+
+The extension validates that message before using the VS Code clipboard API. Preparing or copying a prompt does not execute it. No command, terminal process, model call, or workspace write is triggered by the council UI.
 
 ## Security and trust
 

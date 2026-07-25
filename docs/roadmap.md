@@ -11,11 +11,11 @@
 
 ## Milestone 1 — Shared council context
 
-- [ ] Define `CouncilTurn` and `CouncilSuggestion` contracts
+- [x] Define `CouncilTurn` and `CouncilSuggestion` contracts
 - [ ] Capture the active editor, selection, workspace, and Git summary
-- [ ] Add a mock council provider for deterministic development
-- [ ] Render zero to two suggestions per role
-- [ ] Add unit tests for role limits and empty responses
+- [x] Add a mock council provider for deterministic development
+- [x] Render zero to two suggestions per role
+- [x] Add unit tests for role limits and empty responses
 
 ## Milestone 2 — Codex runtime adapter
 
@@ -27,10 +27,10 @@
 
 ## Milestone 3 — Actionable suggestions
 
-- [ ] Insert a selected suggestion into the composer
-- [ ] Preserve the originating role and rationale
+- [x] Insert a selected suggestion into a local composer
+- [x] Preserve the originating role and rationale in the review
 - [ ] Add dismiss, snooze, and save-to-notes actions
-- [ ] Prevent automatic execution
+- [x] Prevent automatic execution
 - [ ] Measure whether suggestions are used or ignored locally
 
 ## Milestone 4 — Project memory
