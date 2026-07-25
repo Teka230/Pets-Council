@@ -22,7 +22,8 @@ It contains:
 - a reproducible upstream pin;
 - scripts that fetch the matching Code - OSS revision;
 - a built-in Pets Council extension;
-- a deterministic council provider and typed turn contracts;
+- typed council and context contracts;
+- deterministic council behavior for development;
 - architecture and roadmap documentation;
 - CI for type-checking, tests, and the extension build.
 
@@ -30,18 +31,40 @@ Keeping the product logic inside an integrated extension lets the project move q
 
 ## Current status
 
-Run **Pets Council: Open Council** to open the first interactive loop.
+Run **Pets Council: Open Council** to open the first live workspace review.
 
 The panel currently:
 
-- reviews one shared mock `CouncilTurn`;
+- captures the workspace name and active editor path;
+- includes editor text only when the user explicitly selected it;
+- limits selected text to 2,000 characters;
+- runs read-only Git inspection for the branch, changed files, and diff statistics;
+- limits changed files to 50 and the diff summary to 2,000 characters;
 - returns zero to two deterministic suggestions per role;
-- demonstrates a silent Strategist when it has nothing useful to add;
-- lets the user prepare and edit a suggested prompt locally;
-- copies the prompt only after a second explicit action;
+- displays context warnings instead of silently dropping unavailable data;
+- refreshes the local context on demand;
+- lets the user prepare, edit, and copy a suggested prompt;
 - never writes to the workspace or executes the prepared prompt.
 
-This is still a model-independent demo. Codex connectivity, live project context, animated pets, and workbench overlays are not implemented yet.
+The council provider and conversation content are still model-independent placeholders. Codex connectivity, real turns, animated pets, and workbench overlays are not implemented yet.
+
+## Context boundary
+
+This slice intentionally avoids repository indexing and broad file-content collection.
+
+```text
+VS Code workspace metadata
+        +
+active file path
+        +
+explicit editor selection (max 2,000 chars)
+        +
+read-only Git status and diff stats
+        ↓
+bounded CouncilTurn
+```
+
+Absolute workspace paths are not displayed in the council UI. Git commands are read-only and time-limited. Missing Git or editor context becomes a visible warning rather than an error.
 
 ## Quick start
 
@@ -71,15 +94,17 @@ npm run sync:extension
 ## Repository layout
 
 ```text
-config/upstream.json                         pinned Code - OSS revision
-docs/architecture.md                         product and technical boundaries
-docs/roadmap.md                              incremental implementation path
-extensions/pets-council/src/domain.ts         turn, role, review, and suggestion contracts
-extensions/pets-council/src/mockCouncil.ts    deterministic council provider
-extensions/pets-council/src/webview.ts        interactive review and local composer
-scripts/bootstrap-code-oss.mjs               reproducible upstream checkout
-scripts/check-environment.mjs                local prerequisites check
-scripts/sync-extension.mjs                   extension copy into Code - OSS
+config/upstream.json                              pinned Code - OSS revision
+docs/architecture.md                              product and technical boundaries
+docs/roadmap.md                                   incremental implementation path
+extensions/pets-council/src/context.ts             bounded pure context helpers
+extensions/pets-council/src/domain.ts              turn, role, review, and suggestion contracts
+extensions/pets-council/src/mockCouncil.ts         deterministic council provider
+extensions/pets-council/src/workspaceContext.ts    VS Code and read-only Git capture
+extensions/pets-council/src/webview.ts             interactive review and local composer
+scripts/bootstrap-code-oss.mjs                    reproducible upstream checkout
+scripts/check-environment.mjs                     local prerequisites check
+scripts/sync-extension.mjs                        extension copy into Code - OSS
 ```
 
 ## Guiding architecture
@@ -89,8 +114,8 @@ Code - OSS workbench
         |
         +-- Pets Council integrated extension
         |      +-- council UI
+        |      +-- bounded project context
         |      +-- role prompts
-        |      +-- project context
         |      +-- Codex runtime adapter
         |
         +-- minimal native patches
