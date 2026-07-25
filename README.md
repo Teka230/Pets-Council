@@ -22,7 +22,7 @@ It contains:
 - a reproducible upstream pin;
 - scripts that fetch the matching Code - OSS revision;
 - a built-in Pets Council extension;
-- typed council and context contracts;
+- typed council, evidence, and context contracts;
 - deterministic council behavior for development;
 - architecture and roadmap documentation;
 - CI for type-checking, tests, and the extension build.
@@ -31,7 +31,7 @@ Keeping the product logic inside an integrated extension lets the project move q
 
 ## Current status
 
-Run **Pets Council: Open Council** to open the first live workspace review.
+Run **Pets Council: Open Council** to open the live workspace review.
 
 The panel currently:
 
@@ -40,13 +40,34 @@ The panel currently:
 - limits selected text to 2,000 characters;
 - runs read-only Git inspection for the branch, changed files, and diff statistics;
 - limits changed files to 50 and the diff summary to 2,000 characters;
+- requires concrete editor, Git, or sample-turn evidence before producing suggestions;
+- keeps all four companions silent when no useful evidence exists;
+- shows an onboarding state with **Open folder** and **Refresh context** actions;
+- hides the prompt composer until at least one suggestion exists;
+- displays capture time in the local environment rather than forcing UTC;
 - returns zero to two deterministic suggestions per role;
-- displays context warnings instead of silently dropping unavailable data;
-- refreshes the local context on demand;
 - lets the user prepare, edit, and copy a suggested prompt;
 - never writes to the workspace or executes the prepared prompt.
 
 The council provider and conversation content are still model-independent placeholders. Codex connectivity, real turns, animated pets, and workbench overlays are not implemented yet.
+
+## Evidence gate
+
+A live capture does not count placeholder conversation copy as evidence. The Council only speaks when at least one concrete signal exists:
+
+```text
+active file
+    or
+explicit editor selection
+    or
+Git branch
+    or
+changed files / diff statistics
+        ↓
+Council review
+```
+
+Without one of those signals, the panel becomes an onboarding surface rather than inventing generic advice.
 
 ## Context boundary
 
@@ -64,7 +85,7 @@ read-only Git status and diff stats
 bounded CouncilTurn
 ```
 
-Absolute workspace paths are not displayed in the council UI. Git commands are read-only and time-limited. Missing Git or editor context becomes a visible warning rather than an error.
+Absolute workspace paths are not displayed in the council UI. Git commands are read-only and time-limited. Missing Git or editor context becomes visible onboarding or a warning rather than fabricated advice.
 
 ## Quick start
 
@@ -99,9 +120,10 @@ docs/architecture.md                              product and technical boundari
 docs/roadmap.md                                   incremental implementation path
 extensions/pets-council/src/context.ts             bounded pure context helpers
 extensions/pets-council/src/domain.ts              turn, role, review, and suggestion contracts
+extensions/pets-council/src/evidence.ts            useful-context evidence gate
 extensions/pets-council/src/mockCouncil.ts         deterministic council provider
 extensions/pets-council/src/workspaceContext.ts    VS Code and read-only Git capture
-extensions/pets-council/src/webview.ts             interactive review and local composer
+extensions/pets-council/src/webview.ts             onboarding, review, and local composer
 scripts/bootstrap-code-oss.mjs                    reproducible upstream checkout
 scripts/check-environment.mjs                     local prerequisites check
 scripts/sync-extension.mjs                        extension copy into Code - OSS
@@ -115,6 +137,7 @@ Code - OSS workbench
         +-- Pets Council integrated extension
         |      +-- council UI
         |      +-- bounded project context
+        |      +-- evidence gate
         |      +-- role prompts
         |      +-- Codex runtime adapter
         |
