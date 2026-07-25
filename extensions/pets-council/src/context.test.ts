@@ -63,6 +63,6 @@ test('labels staged and unstaged diff summaries', () => {
   assert.equal(result.truncated, false);
   assert.equal(
     result.value,
-    'Working tree:\n extension.ts | 12 ++++++------\n\nStaged:\n domain.ts | 4 ++++'
+    'Working tree:\nextension.ts | 12 ++++++------\n\nStaged:\ndomain.ts | 4 ++++'
   );
 });
