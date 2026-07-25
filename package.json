@@ -1,0 +1,20 @@
+{
+  "name": "pets-council-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A playful Code - OSS distribution with a council of specialized companions.",
+  "license": "MIT",
+  "workspaces": [
+    "extensions/pets-council"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node scripts/check-environment.mjs",
+    "build": "npm run build --workspace pets-council",
+    "typecheck": "npm run typecheck --workspace pets-council",
+    "bootstrap": "node scripts/bootstrap-code-oss.mjs",
+    "sync:extension": "node scripts/sync-extension.mjs"
+  }
+}

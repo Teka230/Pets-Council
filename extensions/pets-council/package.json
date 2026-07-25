@@ -1,0 +1,36 @@
+{
+  "name": "pets-council",
+  "displayName": "Pets Council",
+  "description": "A council of specialized companions for an AI coding workspace.",
+  "version": "0.0.1",
+  "publisher": "teka230",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:petsCouncil.openCouncil"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "petsCouncil.openCouncil",
+        "title": "Open Council",
+        "category": "Pets Council"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.9.2"
+  }
+}
