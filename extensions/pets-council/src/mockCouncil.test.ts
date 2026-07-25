@@ -45,10 +45,23 @@ test('guardian returns two suggestions when files and an active editor are prese
   assert.equal(guardian.suggestions.length, 2);
 });
 
-test('notetaker stays silent when there is no assistant response', () => {
+test('notetaker preserves a git checkpoint without an assistant response', () => {
   const turn: CouncilTurn = {
     ...SAMPLE_COUNCIL_TURN,
     assistantResponse: ''
+  };
+  const review = reviewMockTurn(turn);
+  const notetaker = review.roles.find((role) => role.role === 'notetaker');
+
+  assert.ok(notetaker);
+  assert.equal(notetaker.suggestions.length, 1);
+});
+
+test('notetaker stays silent when no durable context exists', () => {
+  const turn: CouncilTurn = {
+    ...SAMPLE_COUNCIL_TURN,
+    assistantResponse: '',
+    git: undefined
   };
   const review = reviewMockTurn(turn);
   const notetaker = review.roles.find((role) => role.role === 'notetaker');
