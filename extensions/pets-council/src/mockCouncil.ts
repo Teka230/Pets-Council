@@ -5,10 +5,15 @@ import {
   type CouncilSuggestion,
   type CouncilTurn
 } from './domain';
+import { hasUsefulCouncilEvidence } from './evidence';
 
 const MAX_SUGGESTIONS_PER_ROLE = 2;
 
 export function reviewMockTurn(turn: CouncilTurn): CouncilReview {
+  if (!hasUsefulCouncilEvidence(turn)) {
+    return emptyReview(turn.turnId);
+  }
+
   const suggestionsByRole: Record<CouncilRoleId, readonly CouncilSuggestion[]> = {
     architect: buildArchitectSuggestions(turn),
     guardian: buildGuardianSuggestions(turn),
@@ -25,10 +30,24 @@ export function reviewMockTurn(turn: CouncilTurn): CouncilReview {
   };
 }
 
+function emptyReview(turnId: string): CouncilReview {
+  return {
+    turnId,
+    roles: COUNCIL_ROLE_IDS.map((role) => ({
+      role,
+      suggestions: []
+    }))
+  };
+}
+
 function buildArchitectSuggestions(turn: CouncilTurn): readonly CouncilSuggestion[] {
   const activeFile = turn.workspace.activeFile;
   const changedFileCount = turn.git?.changedFiles.length ?? 0;
   const goal = summarize(turn.userMessage);
+
+  if (!activeFile && changedFileCount === 0 && !turn.git?.branch && turn.capture.mode === 'live') {
+    return [];
+  }
 
   return [
     {
@@ -36,13 +55,16 @@ function buildArchitectSuggestions(turn: CouncilTurn): readonly CouncilSuggestio
       role: 'architect',
       title: activeFile
         ? `Continue from ${fileName(activeFile)}`
-        : 'Choose the next workspace slice',
+        : 'Choose the next bounded slice',
       rationale: activeFile
         ? `${activeFile} is active and ${changedFileCount} changed ${pluralize(changedFileCount, 'file')} were captured for this review.`
-        : `The current goal is clear enough to form one bounded implementation slice: ${goal}`,
+        : turn.git?.branch
+          ? `The current Git branch ${turn.git.branch} provides a concrete checkpoint for the next slice.`
+          : `The current goal is clear enough to form one bounded implementation slice: ${goal}`,
       prompt: [
         'Plan the next coherent implementation slice for Pets Council.',
         activeFile ? `Start from the active file ${activeFile}.` : '',
+        turn.git?.branch ? `Use the current branch ${turn.git.branch} as the working checkpoint.` : '',
         changedFileCount > 0
           ? `Account for the ${changedFileCount} changed ${pluralize(changedFileCount, 'file')} in the current Git context.`
           : 'Keep the slice small enough to review independently.',
@@ -134,8 +156,10 @@ function buildStrategistSuggestions(turn: CouncilTurn): readonly CouncilSuggesti
 function buildNotetakerSuggestions(turn: CouncilTurn): readonly CouncilSuggestion[] {
   const branch = turn.git?.branch;
   const diffSummary = turn.git?.diffSummary;
+  const hasSampleConversation = turn.capture.mode === 'sample'
+    && Boolean(turn.assistantResponse.trim());
 
-  if (!branch && !diffSummary && !turn.assistantResponse.trim()) {
+  if (!branch && !diffSummary && !hasSampleConversation) {
     return [];
   }
 
@@ -146,7 +170,7 @@ function buildNotetakerSuggestions(turn: CouncilTurn): readonly CouncilSuggestio
       title: 'Record the workspace checkpoint',
       rationale: branch
         ? `The council reviewed live context from branch ${branch}; preserving the decision boundary will help the next session resume safely.`
-        : 'The current response establishes context worth preserving for the next session.',
+        : 'The sample response establishes context worth preserving for the next session.',
       prompt: [
         'Prepare a concise project note for this Pets Council checkpoint.',
         branch ? `Include the current branch: ${branch}.` : '',
