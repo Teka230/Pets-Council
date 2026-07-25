@@ -9,8 +9,8 @@ Primary assistant response
     ↓
 Shared turn context
     ├── conversation
-    ├── active files and selection
-    ├── Git state and diff
+    ├── active editor and explicit selection
+    ├── Git status and diff statistics
     ├── roadmap and notes
     └── runtime events
     ↓
@@ -74,17 +74,57 @@ The extension exposes one command:
 Pets Council: Open Council
 ```
 
-It opens an interactive panel backed by a deterministic mock provider. The current slice includes:
+It opens an interactive panel backed by a deterministic mock provider and a live local context collector. The current slice includes:
 
 - typed `CouncilTurn`, `CouncilSuggestion`, `CouncilRoleReview`, and `CouncilReview` contracts;
-- one shared sample turn;
+- live workspace and active-editor metadata;
+- explicit editor selection capture;
+- bounded read-only Git inspection;
 - all four roles in a stable order;
 - zero to two suggestions per role;
-- an intentionally silent role;
+- intentionally silent roles;
 - a local composer filled only after a suggestion click;
-- an explicit copy action through the extension host.
+- an explicit copy action through the extension host;
+- an explicit context refresh action.
 
 There is still no model call, filesystem write, project indexing, autonomous action, or Codex dependency.
+
+## Context collector
+
+`workspaceContext.ts` creates the live `CouncilTurn`.
+
+### Workspace input
+
+The collector reads:
+
+- `vscode.workspace.name`;
+- the active editor URI;
+- a workspace-relative active file path where possible;
+- the current editor selection only when it is non-empty.
+
+It does not scan the active file or repository contents. Selected text is capped at 2,000 characters and the truncation is visible in `CouncilCapture.warnings`.
+
+### Git input
+
+The collector runs time-limited, read-only Git commands in the active workspace folder:
+
+```text
+git rev-parse --show-toplevel
+git branch --show-current
+git rev-parse --short HEAD
+git status --porcelain=v1 -z --untracked-files=all
+git diff --stat=80,20 --compact-summary
+git diff --cached --stat=80,20 --compact-summary
+```
+
+The resulting context is bounded:
+
+- maximum 50 changed file paths;
+- maximum 2,000 characters of combined staged and unstaged diff statistics;
+- no absolute repository root is included in the council UI;
+- failures become visible warnings and do not block the panel.
+
+The Git commands inspect repository state but do not modify it.
 
 ## Turn contract
 
@@ -95,15 +135,23 @@ type CouncilTurn = {
   turnId: string;
   userMessage: string;
   assistantResponse: string;
+  capture: {
+    mode: 'live' | 'sample';
+    capturedAt: string;
+    warnings: readonly string[];
+  };
   workspace: {
     name?: string;
     activeFile?: string;
     selectedText?: string;
+    selectedTextTruncated?: boolean;
   };
   git?: {
     branch?: string;
     changedFiles: readonly string[];
+    changedFilesTruncated?: boolean;
     diffSummary?: string;
+    diffSummaryTruncated?: boolean;
   };
 };
 
@@ -117,22 +165,26 @@ type CouncilSuggestion = {
 };
 ```
 
-The mock provider is deterministic: the same turn produces the same review. The UI renders zero suggestions without treating that as an error. Silence is a valid council response when a role has nothing useful to add.
+The mock provider is deterministic for the same turn. The UI renders zero suggestions without treating that as an error. Silence is a valid council response when a role has nothing useful to add.
 
 ## Webview trust boundary
 
-The webview owns local prompt preparation and editing. Its only extension-host message is:
+The webview owns local prompt preparation and editing. Its extension-host messages are:
 
 ```ts
 { type: 'copyPrompt', value: string }
+{ type: 'refreshContext' }
 ```
 
-The extension validates that message before using the VS Code clipboard API. Preparing or copying a prompt does not execute it. No command, terminal process, model call, or workspace write is triggered by the council UI.
+The extension validates both messages. `refreshContext` performs the same bounded local read again. `copyPrompt` writes only to the clipboard. Neither message executes the prepared prompt or writes to the workspace.
 
 ## Security and trust
 
 - No suggestion executes automatically.
 - Workspace writes require an explicit user action.
+- Only an explicit editor selection contributes file text to this slice.
+- Git inspection is read-only, bounded, and time-limited.
+- Capture truncation and unavailable context remain visible.
 - Runtime permissions remain visible.
 - Prompt and model configuration stay separate from visual pet assets.
 - A pet skin must never implicitly grant capabilities.
