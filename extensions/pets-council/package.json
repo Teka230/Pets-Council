@@ -1,5 +1,5 @@
 {
-  "name": "@pets-council/extension",
+  "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A council of specialized companions for an AI coding workspace.",
   "version": "0.0.1",
