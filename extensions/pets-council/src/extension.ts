@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { reviewMockTurn } from './mockCouncil';
-import { renderCouncilHtml, renderLoadingHtml } from './webview';
+import { renderCouncilHtml } from './webview';
 import { captureLiveCouncilTurn } from './workspaceContext';
 
 type CopyPromptMessage = Readonly<{
@@ -100,4 +100,28 @@ function isCouncilWebviewMessage(message: unknown): message is CouncilWebviewMes
 
 function createNonce(): string {
   return randomBytes(18).toString('base64');
+}
+
+function renderLoadingHtml(nonce: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <title>Pets Council</title>
+  <style>
+    :root { color-scheme: light dark; font-family: var(--vscode-font-family); }
+    body { margin: 0; padding: 32px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+    main { width: min(720px, 100%); margin: 0 auto; }
+    p { color: var(--vscode-descriptionForeground); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Capturing workspace context…</h1>
+    <p>Reading the active editor and bounded Git state locally. Git inspection is read-only and time-limited; files and repository state are not modified.</p>
+  </main>
+</body>
+</html>`;
 }
