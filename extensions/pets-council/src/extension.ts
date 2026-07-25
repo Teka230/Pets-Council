@@ -13,7 +13,11 @@ type RefreshContextMessage = Readonly<{
   type: 'refreshContext';
 }>;
 
-type CouncilWebviewMessage = CopyPromptMessage | RefreshContextMessage;
+type OpenFolderMessage = Readonly<{
+  type: 'openFolder';
+}>;
+
+type CouncilWebviewMessage = CopyPromptMessage | RefreshContextMessage | OpenFolderMessage;
 
 export function activate(context: vscode.ExtensionContext): void {
   const openCouncil = vscode.commands.registerCommand(
@@ -66,6 +70,11 @@ function showCouncilPanel(): void {
         return;
       }
 
+      if (message.type === 'openFolder') {
+        await openFolderFromCouncil();
+        return;
+      }
+
       const prompt = message.value.trim();
       if (!prompt) {
         return;
@@ -84,13 +93,30 @@ function showCouncilPanel(): void {
   void renderLiveContext();
 }
 
+async function openFolderFromCouncil(): Promise<void> {
+  const selected = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+    openLabel: 'Open folder',
+    title: 'Open a project for Pets Council'
+  });
+
+  const folder = selected?.[0];
+  if (!folder) {
+    return;
+  }
+
+  await vscode.commands.executeCommand('vscode.openFolder', folder);
+}
+
 function isCouncilWebviewMessage(message: unknown): message is CouncilWebviewMessage {
   if (typeof message !== 'object' || message === null) {
     return false;
   }
 
   const candidate = message as Partial<CouncilWebviewMessage>;
-  if (candidate.type === 'refreshContext') {
+  if (candidate.type === 'refreshContext' || candidate.type === 'openFolder') {
     return true;
   }
 
