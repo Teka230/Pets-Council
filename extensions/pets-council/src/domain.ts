@@ -46,19 +46,29 @@ export const COUNCIL_ROLES: readonly CouncilRoleDefinition[] = [
   }
 ];
 
+export type CouncilCapture = Readonly<{
+  mode: 'live' | 'sample';
+  capturedAt: string;
+  warnings: readonly string[];
+}>;
+
 export type CouncilTurn = Readonly<{
   turnId: string;
   userMessage: string;
   assistantResponse: string;
+  capture: CouncilCapture;
   workspace: Readonly<{
     name?: string;
     activeFile?: string;
     selectedText?: string;
+    selectedTextTruncated?: boolean;
   }>;
   git?: Readonly<{
     branch?: string;
     changedFiles: readonly string[];
+    changedFilesTruncated?: boolean;
     diffSummary?: string;
+    diffSummaryTruncated?: boolean;
   }>;
 }>;
 
