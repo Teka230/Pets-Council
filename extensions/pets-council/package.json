@@ -2,7 +2,7 @@
   "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A council of specialized companions for an AI coding workspace.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": {
@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/mockCouncil.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
