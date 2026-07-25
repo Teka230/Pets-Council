@@ -7,6 +7,30 @@ import {
   type CouncilTurn
 } from './domain';
 
+export function renderLoadingHtml(nonce: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${escapeHtml(nonce)}';">
+  <title>Pets Council</title>
+  <style>
+    :root { color-scheme: light dark; font-family: var(--vscode-font-family); }
+    body { margin: 0; padding: 32px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+    main { width: min(720px, 100%); margin: 0 auto; }
+    p { color: var(--vscode-descriptionForeground); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Capturing workspace context…</h1>
+    <p>Reading the active editor and a bounded Git summary locally. No file is modified and no command is executed on your behalf.</p>
+  </main>
+</body>
+</html>`;
+}
+
 export function renderCouncilHtml(
   turn: CouncilTurn,
   review: CouncilReview,
@@ -21,6 +45,7 @@ export function renderCouncilHtml(
   const roleCards = review.roles
     .map((roleReview) => renderRoleCard(roleReview, roleDefinitions.get(roleReview.role)))
     .join('');
+  const warnings = renderWarnings(turn.capture.warnings);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -35,9 +60,7 @@ export function renderCouncilHtml(
       font-family: var(--vscode-font-family);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -47,13 +70,18 @@ export function renderCouncilHtml(
     }
 
     button,
-    textarea {
-      font: inherit;
-    }
+    textarea { font: inherit; }
 
     main {
       width: min(920px, 100%);
       margin: 0 auto;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
     }
 
     .eyebrow {
@@ -73,7 +101,7 @@ export function renderCouncilHtml(
     }
 
     .promise {
-      max-width: 720px;
+      max-width: 760px;
       margin: 16px 0 20px;
       color: var(--vscode-descriptionForeground);
       font-size: 16px;
@@ -84,7 +112,7 @@ export function renderCouncilHtml(
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-bottom: 26px;
+      margin-bottom: 14px;
     }
 
     .context-pill {
@@ -95,6 +123,25 @@ export function renderCouncilHtml(
       background: var(--vscode-sideBar-background);
       font-size: 12px;
     }
+
+    .privacy-note {
+      margin: 0 0 22px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .warnings {
+      margin: 0 0 22px;
+      padding: 10px 12px;
+      border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
+      border-radius: 10px;
+      background: var(--vscode-inputValidation-warningBackground, var(--vscode-sideBar-background));
+    }
+
+    .warnings summary { cursor: pointer; font-weight: 700; }
+    .warnings ul { margin: 10px 0 0; padding-left: 20px; }
+    .warnings li { margin: 5px 0; color: var(--vscode-descriptionForeground); }
 
     .roles {
       display: grid;
@@ -111,9 +158,7 @@ export function renderCouncilHtml(
       background: var(--vscode-sideBar-background);
     }
 
-    .role--silent {
-      opacity: 0.72;
-    }
+    .role--silent { opacity: 0.72; }
 
     .role__icon {
       display: grid;
@@ -197,8 +242,12 @@ export function renderCouncilHtml(
       cursor: pointer;
     }
 
-    .action:hover {
-      background: var(--vscode-button-hoverBackground);
+    .action:hover { background: var(--vscode-button-hoverBackground); }
+
+    .secondary {
+      color: var(--vscode-foreground);
+      background: transparent;
+      border-color: var(--vscode-panel-border);
     }
 
     .composer {
@@ -250,33 +299,46 @@ export function renderCouncilHtml(
       gap: 8px;
     }
 
-    .secondary {
-      color: var(--vscode-foreground);
-      background: transparent;
-      border-color: var(--vscode-panel-border);
-    }
-
     .status {
       margin: 0;
       color: var(--vscode-descriptionForeground);
       font-size: 12px;
     }
+
+    @media (max-width: 620px) {
+      body { padding: 16px; }
+      .header-row { display: block; }
+      .header-row > button { margin-top: 14px; }
+      .role { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <p class="eyebrow">Council review</p>
-    <h1>${activeRoles} companions have something useful to add.</h1>
+    <div class="header-row">
+      <div>
+        <p class="eyebrow">Live council review</p>
+        <h1>${activeRoles} companions have something useful to add.</h1>
+      </div>
+      <button class="action secondary" id="refresh-context" type="button">Refresh context</button>
+    </div>
     <p class="promise">
-      The deterministic demo produced ${suggestionCount} ${pluralize(suggestionCount, 'suggestion')} from one shared turn.
+      The local capture produced ${suggestionCount} ${pluralize(suggestionCount, 'suggestion')} from the active editor and bounded Git state.
       Choose one to prepare the next prompt; nothing executes automatically.
     </p>
-    <div class="turn-context" aria-label="Mock turn context">
-      <span class="context-pill">Mock turn</span>
+    <div class="turn-context" aria-label="Captured workspace context">
+      <span class="context-pill">${turn.capture.mode === 'live' ? 'Live workspace' : 'Sample context'}</span>
       <span class="context-pill">${escapeHtml(turn.workspace.name ?? 'Untitled workspace')}</span>
-      ${turn.workspace.activeFile ? `<span class="context-pill">${escapeHtml(turn.workspace.activeFile)}</span>` : ''}
-      ${turn.git?.branch ? `<span class="context-pill">${escapeHtml(turn.git.branch)}</span>` : ''}
+      ${turn.workspace.activeFile ? `<span class="context-pill">${escapeHtml(turn.workspace.activeFile)}</span>` : '<span class="context-pill">No active editor</span>'}
+      ${turn.workspace.selectedText ? `<span class="context-pill">Selection: ${turn.workspace.selectedText.length} chars${turn.workspace.selectedTextTruncated ? '+' : ''}</span>` : ''}
+      ${turn.git?.branch ? `<span class="context-pill">${escapeHtml(turn.git.branch)}</span>` : '<span class="context-pill">No Git branch</span>'}
+      ${turn.git ? `<span class="context-pill">${turn.git.changedFiles.length}${turn.git.changedFilesTruncated ? '+' : ''} changed ${pluralize(turn.git.changedFiles.length, 'file')}</span>` : ''}
+      <span class="context-pill">Captured ${escapeHtml(formatCapturedAt(turn.capture.capturedAt))}</span>
     </div>
+    <p class="privacy-note">
+      Pets Council does not scan file contents in this slice. Only text explicitly selected in the editor may be captured, up to 2,000 characters.
+    </p>
+    ${warnings}
     <section class="roles" aria-label="Council suggestions">
       ${roleCards}
     </section>
@@ -338,6 +400,11 @@ export function renderCouncilHtml(
       status.textContent = 'Copy requested. Nothing has run.';
     });
 
+    document.getElementById('refresh-context').addEventListener('click', () => {
+      status.textContent = 'Refreshing the local workspace context…';
+      vscode.postMessage({ type: 'refreshContext' });
+    });
+
     document.getElementById('clear-prompt').addEventListener('click', () => {
       composer.value = '';
       vscode.setState({ draft: '' });
@@ -397,6 +464,25 @@ function renderSuggestion(
         data-prompt="${escapeHtml(suggestion.prompt)}"
       >${escapeHtml(suggestion.actionLabel)}</button>
     </article>`;
+}
+
+function renderWarnings(warnings: readonly string[]): string {
+  if (warnings.length === 0) {
+    return '';
+  }
+
+  return `
+    <details class="warnings">
+      <summary>${warnings.length} context ${pluralize(warnings.length, 'warning')}</summary>
+      <ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>
+    </details>`;
+}
+
+function formatCapturedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : `${date.toISOString().slice(11, 19)} UTC`;
 }
 
 function pluralize(count: number, singular: string): string {

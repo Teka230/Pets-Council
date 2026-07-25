@@ -8,6 +8,11 @@ export const SAMPLE_COUNCIL_TURN: CouncilTurn = {
     'Allow every role to return zero to two suggestions.',
     'Keep every action explicit and prepare prompts without executing them.'
   ].join(' '),
+  capture: {
+    mode: 'sample',
+    capturedAt: '2026-07-25T00:00:00.000Z',
+    warnings: []
+  },
   workspace: {
     name: 'Pets-Council',
     activeFile: 'extensions/pets-council/src/extension.ts'

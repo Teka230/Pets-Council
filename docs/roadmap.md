@@ -12,16 +12,18 @@
 ## Milestone 1 — Shared council context
 
 - [x] Define `CouncilTurn` and `CouncilSuggestion` contracts
-- [ ] Capture the active editor, selection, workspace, and Git summary
+- [x] Capture the active editor, explicit selection, workspace, and Git summary
+- [x] Bound and surface context truncation
 - [x] Add a mock council provider for deterministic development
 - [x] Render zero to two suggestions per role
-- [x] Add unit tests for role limits and empty responses
+- [x] Add unit tests for role limits, empty responses, and context parsing
 
 ## Milestone 2 — Codex runtime adapter
 
 - [ ] Connect to `codex app-server`
 - [ ] Map threads, turns, streaming events, and approvals
 - [ ] Keep the runtime behind a typed adapter
+- [ ] Replace placeholder conversation content with the real completed turn
 - [ ] Show connection and permission state in the UI
 - [ ] Add failure and reconnection scenarios
 
@@ -29,6 +31,7 @@
 
 - [x] Insert a selected suggestion into a local composer
 - [x] Preserve the originating role and rationale in the review
+- [ ] Insert a selected suggestion into the real Codex composer
 - [ ] Add dismiss, snooze, and save-to-notes actions
 - [x] Prevent automatic execution
 - [ ] Measure whether suggestions are used or ignored locally
