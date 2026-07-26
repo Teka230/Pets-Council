@@ -69,3 +69,25 @@ test('notetaker stays silent when no durable context exists', () => {
   assert.ok(notetaker);
   assert.deepEqual(notetaker.suggestions, []);
 });
+
+test('all companions stay silent when a live capture has no evidence', () => {
+  const turn: CouncilTurn = {
+    ...SAMPLE_COUNCIL_TURN,
+    capture: {
+      mode: 'live',
+      capturedAt: '2026-07-25T13:35:14.000Z',
+      warnings: [
+        'No active editor was available when the context was captured.',
+        'Open a folder or workspace to include Git context.'
+      ]
+    },
+    userMessage: 'Review the current workspace context and suggest the next useful step.',
+    assistantResponse: 'The live workspace context was captured.',
+    workspace: {},
+    git: undefined
+  };
+
+  const review = reviewMockTurn(turn);
+
+  assert.ok(review.roles.every((role) => role.suggestions.length === 0));
+});

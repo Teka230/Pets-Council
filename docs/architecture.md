@@ -14,6 +14,10 @@ Shared turn context
     ├── roadmap and notes
     └── runtime events
     ↓
+Evidence gate
+    ├── concrete signal found → Council review
+    └── no concrete signal → quiet onboarding state
+    ↓
 Council review
     ├── Architect
     ├── Guardian
@@ -41,6 +45,7 @@ The integrated extension owns most product behavior:
 
 - council roles and prompts;
 - shared turn context;
+- the useful-evidence gate;
 - Codex runtime adapter;
 - suggestions and explicit acceptance;
 - project notes and decision memory;
@@ -80,14 +85,41 @@ It opens an interactive panel backed by a deterministic mock provider and a live
 - live workspace and active-editor metadata;
 - explicit editor selection capture;
 - bounded read-only Git inspection;
+- a pure useful-evidence gate;
 - all four roles in a stable order;
 - zero to two suggestions per role;
-- intentionally silent roles;
-- a local composer filled only after a suggestion click;
-- an explicit copy action through the extension host;
-- an explicit context refresh action.
+- a dedicated empty state when no evidence exists;
+- an explicit folder picker and context refresh action;
+- a local composer shown only when suggestions exist;
+- an explicit copy action through the extension host.
 
 There is still no model call, filesystem write, project indexing, autonomous action, or Codex dependency.
+
+## Evidence gate
+
+`evidence.ts` separates captured metadata from context that is useful enough to justify a Council response.
+
+For a live capture, useful evidence means at least one of:
+
+```text
+active file
+explicit editor selection
+Git branch
+changed files
+Git diff summary
+```
+
+The placeholder `userMessage` and `assistantResponse` used before Codex integration are deliberately ignored in live mode. They remain valid evidence only for deterministic sample turns.
+
+If no useful evidence exists:
+
+- every role returns an empty suggestion list;
+- the UI does not claim that companions have useful advice;
+- the prompt composer is hidden;
+- the panel shows **Open folder** and **Refresh context**;
+- role statuses explain what each companion is waiting for.
+
+This makes silence a product behavior, not merely an allowed provider response.
 
 ## Context collector
 
@@ -174,9 +206,16 @@ The webview owns local prompt preparation and editing. Its extension-host messag
 ```ts
 { type: 'copyPrompt', value: string }
 { type: 'refreshContext' }
+{ type: 'openFolder' }
 ```
 
-The extension validates both messages. `refreshContext` performs the same bounded local read again. `copyPrompt` writes only to the clipboard. Neither message executes the prepared prompt or writes to the workspace.
+The extension validates all messages.
+
+- `refreshContext` performs the same bounded local read again.
+- `copyPrompt` writes only to the clipboard.
+- `openFolder` opens a native folder picker, then asks VS Code to open the explicitly selected folder.
+
+No message executes a prepared prompt or writes project files.
 
 ## Security and trust
 
@@ -185,6 +224,7 @@ The extension validates both messages. `refreshContext` performs the same bounde
 - Only an explicit editor selection contributes file text to this slice.
 - Git inspection is read-only, bounded, and time-limited.
 - Capture truncation and unavailable context remain visible.
+- No evidence means no generated advice.
 - Runtime permissions remain visible.
 - Prompt and model configuration stay separate from visual pet assets.
 - A pet skin must never implicitly grant capabilities.

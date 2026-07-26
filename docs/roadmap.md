@@ -14,9 +14,13 @@
 - [x] Define `CouncilTurn` and `CouncilSuggestion` contracts
 - [x] Capture the active editor, explicit selection, workspace, and Git summary
 - [x] Bound and surface context truncation
+- [x] Add a useful-evidence gate
+- [x] Keep every role silent when live context has no concrete signal
+- [x] Add a dedicated onboarding state with folder picker and refresh
+- [x] Hide the prompt composer when no suggestion exists
 - [x] Add a mock council provider for deterministic development
 - [x] Render zero to two suggestions per role
-- [x] Add unit tests for role limits, empty responses, and context parsing
+- [x] Add unit tests for role limits, empty responses, evidence, rendering, and context parsing
 
 ## Milestone 2 — Codex runtime adapter
 
