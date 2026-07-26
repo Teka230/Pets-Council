@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import type { CouncilReview, CouncilTurn } from './domain';
 import { reviewMockTurn } from './mockCouncil';
+import { CodexRuntimeService, resolveCodexBinary } from './runtime/service';
+import { createStdioCodexTransport } from './runtime/stdioTransport';
 import { renderCouncilHtml } from './webview';
 import { captureLiveCouncilTurn } from './workspaceContext';
 
@@ -17,22 +20,48 @@ type OpenFolderMessage = Readonly<{
   type: 'openFolder';
 }>;
 
-type CouncilWebviewMessage = CopyPromptMessage | RefreshContextMessage | OpenFolderMessage;
+type ConnectCodexMessage = Readonly<{
+  type: 'connectCodex';
+}>;
+
+type DisconnectCodexMessage = Readonly<{
+  type: 'disconnectCodex';
+}>;
+
+type CouncilWebviewMessage =
+  | CopyPromptMessage
+  | RefreshContextMessage
+  | OpenFolderMessage
+  | ConnectCodexMessage
+  | DisconnectCodexMessage;
 
 export function activate(context: vscode.ExtensionContext): void {
+  const runtime = new CodexRuntimeService(
+    resolveCodexBinary(readConfiguredCodexBinary()),
+    createStdioCodexTransport
+  );
   const openCouncil = vscode.commands.registerCommand(
     'petsCouncil.openCouncil',
-    () => showCouncilPanel()
+    () => showCouncilPanel(runtime)
   );
+  const configurationSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('petsCouncil.codexBinary')) {
+      runtime.setBinary(resolveCodexBinary(readConfiguredCodexBinary()));
+    }
+  });
 
-  context.subscriptions.push(openCouncil);
+  context.subscriptions.push(
+    openCouncil,
+    configurationSubscription,
+    { dispose: () => runtime.dispose() }
+  );
 }
 
 export function deactivate(): void {
-  // No long-lived resources yet.
+  // ExtensionContext disposes the shared runtime service.
 }
 
-function showCouncilPanel(): void {
+function showCouncilPanel(runtime: CodexRuntimeService): void {
   const panel = vscode.window.createWebviewPanel(
     'petsCouncil.panel',
     'Pets Council',
@@ -45,6 +74,21 @@ function showCouncilPanel(): void {
 
   let disposed = false;
   let renderSequence = 0;
+  let currentTurn: CouncilTurn | undefined;
+  let currentReview: CouncilReview | undefined;
+
+  const renderCurrent = (): void => {
+    if (disposed || !currentTurn || !currentReview) {
+      return;
+    }
+
+    panel.webview.html = renderCouncilHtml(
+      currentTurn,
+      currentReview,
+      runtime.status,
+      createNonce()
+    );
+  };
 
   const renderLiveContext = async (): Promise<void> => {
     const currentSequence = ++renderSequence;
@@ -55,10 +99,12 @@ function showCouncilPanel(): void {
       return;
     }
 
-    const review = reviewMockTurn(turn);
-    panel.webview.html = renderCouncilHtml(turn, review, createNonce());
+    currentTurn = turn;
+    currentReview = reviewMockTurn(turn);
+    renderCurrent();
   };
 
+  const runtimeSubscription = runtime.onDidChange(() => renderCurrent());
   const messageSubscription = panel.webview.onDidReceiveMessage(
     async (message: unknown) => {
       if (!isCouncilWebviewMessage(message)) {
@@ -75,6 +121,16 @@ function showCouncilPanel(): void {
         return;
       }
 
+      if (message.type === 'connectCodex') {
+        await runtime.connect();
+        return;
+      }
+
+      if (message.type === 'disconnectCodex') {
+        runtime.disconnect();
+        return;
+      }
+
       const prompt = message.value.trim();
       if (!prompt) {
         return;
@@ -87,6 +143,7 @@ function showCouncilPanel(): void {
 
   panel.onDidDispose(() => {
     disposed = true;
+    runtimeSubscription.dispose();
     messageSubscription.dispose();
   });
 
@@ -110,13 +167,24 @@ async function openFolderFromCouncil(): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', folder);
 }
 
+function readConfiguredCodexBinary(): string | undefined {
+  return vscode.workspace
+    .getConfiguration('petsCouncil')
+    .get<string>('codexBinary');
+}
+
 function isCouncilWebviewMessage(message: unknown): message is CouncilWebviewMessage {
   if (typeof message !== 'object' || message === null) {
     return false;
   }
 
   const candidate = message as Partial<CouncilWebviewMessage>;
-  if (candidate.type === 'refreshContext' || candidate.type === 'openFolder') {
+  if (
+    candidate.type === 'refreshContext'
+    || candidate.type === 'openFolder'
+    || candidate.type === 'connectCodex'
+    || candidate.type === 'disconnectCodex'
+  ) {
     return true;
   }
 
