@@ -77,10 +77,10 @@ class StdioCodexTransport implements CodexMessageTransport {
 
     this.closed = true;
     this.child.stdin.end();
-    if (!this.child.killed) {
+    if (this.child.exitCode === null && this.child.signalCode === null) {
       this.child.kill('SIGTERM');
       const forceKill = setTimeout(() => {
-        if (!this.child.killed) {
+        if (this.child.exitCode === null && this.child.signalCode === null) {
           this.child.kill('SIGKILL');
         }
       }, 1_000);
@@ -101,7 +101,7 @@ class StdioCodexTransport implements CodexMessageTransport {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.close(`Codex app-server emitted invalid JSONL: ${detail}`);
-      if (!this.child.killed) {
+      if (this.child.exitCode === null && this.child.signalCode === null) {
         this.child.kill('SIGTERM');
       }
     }
