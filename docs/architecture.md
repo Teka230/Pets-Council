@@ -46,7 +46,7 @@ The integrated extension owns most product behavior:
 - council roles and prompts;
 - shared turn context;
 - the useful-evidence gate;
-- Codex runtime adapter;
+- the typed Codex runtime adapter;
 - suggestions and explicit acceptance;
 - project notes and decision memory;
 - user-facing panels and commands;
@@ -79,9 +79,9 @@ The extension exposes one command:
 Pets Council: Open Council
 ```
 
-It opens an interactive panel backed by a deterministic mock provider and a live local context collector. The current slice includes:
+It opens an interactive panel backed by a deterministic mock provider, a live local context collector, and an explicit Codex runtime connection. The current slice includes:
 
-- typed `CouncilTurn`, `CouncilSuggestion`, `CouncilRoleReview`, and `CouncilReview` contracts;
+- typed Council and runtime contracts;
 - live workspace and active-editor metadata;
 - explicit editor selection capture;
 - bounded read-only Git inspection;
@@ -91,9 +91,12 @@ It opens an interactive panel backed by a deterministic mock provider and a live
 - a dedicated empty state when no evidence exists;
 - an explicit folder picker and context refresh action;
 - a local composer shown only when suggestions exist;
-- an explicit copy action through the extension host.
+- an explicit copy action through the extension host;
+- a user-triggered `codex app-server` process;
+- the required `initialize` then `initialized` handshake;
+- visible disconnected, connecting, ready, and error states.
 
-There is still no model call, filesystem write, project indexing, autonomous action, or Codex dependency.
+There is still no thread creation, model turn, approval handling, filesystem write, project indexing, or autonomous action.
 
 ## Evidence gate
 
@@ -158,6 +161,82 @@ The resulting context is bounded:
 
 The Git commands inspect repository state but do not modify it.
 
+## Codex runtime adapter
+
+The runtime is split into four testable layers:
+
+```text
+runtime/jsonl.ts
+    newline-delimited JSON framing
+        ↓
+runtime/stdioTransport.ts
+    codex app-server process and stdio
+        ↓
+runtime/client.ts
+    requests, responses, notifications, initialize handshake
+        ↓
+runtime/service.ts
+    explicit lifecycle and UI-facing status
+```
+
+### Process boundary
+
+The process is started only after the user presses **Connect Codex**:
+
+```text
+codex app-server --listen stdio://
+```
+
+Binary resolution order:
+
+```text
+petsCouncil.codexBinary
+        ↓
+CODEX_BIN
+        ↓
+codex on PATH
+```
+
+Changing the configured binary disconnects the current process. Reconnection is not automatic.
+
+### Protocol boundary
+
+The client completes exactly this handshake:
+
+```text
+initialize request
+        ↓
+initialize response
+        ↓
+initialized notification
+        ↓
+ready
+```
+
+The client does not opt into experimental API capabilities in this slice.
+
+`ready` means the transport and initialization succeeded. It does not mean a thread exists, a model is running, or permissions have been granted.
+
+### Runtime states
+
+```text
+disconnected
+     ↓ explicit Connect
+connecting
+     ├── success → ready
+     └── failure → error
+ready
+     ├── explicit Disconnect → disconnected
+     └── unexpected exit → error
+error
+     ↓ explicit Retry
+connecting
+```
+
+The runtime service is shared by Council panels, while each panel keeps its own captured context and draft.
+
+See `docs/codex-runtime.md` for detailed lifecycle and test coverage.
+
 ## Turn contract
 
 The model-independent contract is implemented in `extensions/pets-council/src/domain.ts`:
@@ -186,18 +265,9 @@ type CouncilTurn = {
     diffSummaryTruncated?: boolean;
   };
 };
-
-type CouncilSuggestion = {
-  id: string;
-  role: 'architect' | 'guardian' | 'strategist' | 'notetaker';
-  title: string;
-  rationale: string;
-  prompt: string;
-  actionLabel: string;
-};
 ```
 
-The mock provider is deterministic for the same turn. The UI renders zero suggestions without treating that as an error. Silence is a valid council response when a role has nothing useful to add.
+The mock provider is deterministic for the same turn. The UI renders zero suggestions without treating that as an error.
 
 ## Webview trust boundary
 
@@ -207,6 +277,8 @@ The webview owns local prompt preparation and editing. Its extension-host messag
 { type: 'copyPrompt', value: string }
 { type: 'refreshContext' }
 { type: 'openFolder' }
+{ type: 'connectCodex' }
+{ type: 'disconnectCodex' }
 ```
 
 The extension validates all messages.
@@ -214,6 +286,8 @@ The extension validates all messages.
 - `refreshContext` performs the same bounded local read again.
 - `copyPrompt` writes only to the clipboard.
 - `openFolder` opens a native folder picker, then asks VS Code to open the explicitly selected folder.
+- `connectCodex` starts and initializes app-server but creates no thread.
+- `disconnectCodex` stops the shared app-server process.
 
 No message executes a prepared prompt or writes project files.
 
@@ -223,9 +297,10 @@ No message executes a prepared prompt or writes project files.
 - Workspace writes require an explicit user action.
 - Only an explicit editor selection contributes file text to this slice.
 - Git inspection is read-only, bounded, and time-limited.
-- Capture truncation and unavailable context remain visible.
 - No evidence means no generated advice.
-- Runtime permissions remain visible.
+- Codex does not connect automatically.
+- A ready runtime has not created a thread or sent a prompt.
+- Stderr diagnostics are bounded.
 - Prompt and model configuration stay separate from visual pet assets.
 - A pet skin must never implicitly grant capabilities.
 
