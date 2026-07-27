@@ -1,0 +1,52 @@
+import { access, readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const codeOssRoot=path.resolve(root,process.env.CODE_OSS_ROOT||'.vendor/vscode');
+const compileOnly=process.argv.includes('--compile-only');
+const skipInstall=process.argv.includes('--skip-install');
+
+async function main(){
+  await ensureBootstrap();
+  if(!skipInstall)await run('npm',['install'],codeOssRoot);
+  await run('npm',['run','compile'],codeOssRoot);
+  await verifyDesktopSources();
+  console.log('\nDesktop smoke compile completed.');
+  console.log(`Code - OSS root: ${codeOssRoot}`);
+  console.log('Verified: integrated extension entrypoint, native overlay contribution, compiled workbench output.');
+  if(compileOnly)return;
+  const launcher=process.platform==='win32'?path.join(codeOssRoot,'scripts','code.bat'):path.join(codeOssRoot,'scripts','code.sh');
+  await access(launcher);
+  console.log('Launching the patched workbench for the manual smoke scenario…');
+  await run(launcher,['--disable-workspace-trust','--skip-welcome'],codeOssRoot);
+}
+
+async function ensureBootstrap(){
+  if(!(await exists(path.join(codeOssRoot,'.git'))))await run('npm',['run','bootstrap'],root);
+  else{
+    await run('npm',['run','build'],root);
+    await run('npm',['run','sync:extension'],root);
+    await run('npm',['run','native:apply'],root);
+  }
+}
+
+async function verifyDesktopSources(){
+  await run('npm',['run','native:verify'],root);
+  await access(path.join(codeOssRoot,'extensions','pets-council','dist','extension.js'));
+  const packageJson=JSON.parse(await readFile(path.join(codeOssRoot,'extensions','pets-council','package.json'),'utf8'));
+  if(packageJson.main!=='./dist/extension.js')throw new Error('Integrated extension entrypoint does not match the compiled artifact.');
+  const compiledCandidates=[
+    path.join(codeOssRoot,'out','vs','workbench','workbench.desktop.main.js'),
+    path.join(codeOssRoot,'out','vs','workbench','workbench.web.main.js'),
+    path.join(codeOssRoot,'out','vs','workbench','workbench.common.main.js')
+  ];
+  if(!(await anyExists(compiledCandidates)))throw new Error('Code - OSS compile completed without a recognizable workbench output.');
+}
+
+function run(command,args,cwd){return new Promise((resolve,reject)=>{const child=spawn(command,args,{cwd,stdio:'inherit',shell:process.platform==='win32'});child.once('error',reject);child.once('exit',(code)=>code===0?resolve():reject(new Error(`${command} exited with code ${code??'unknown'}.`)));});}
+async function exists(candidate){try{await stat(candidate);return true;}catch{return false;}}
+async function anyExists(candidates){for(const candidate of candidates)if(await exists(candidate))return true;return false;}
+
+main().catch((error)=>{console.error(error instanceof Error?error.message:error);process.exitCode=1;});
