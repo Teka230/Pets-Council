@@ -1,0 +1,60 @@
+name: Desktop smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_code_oss_install:
+        description: Reuse a cached Code - OSS dependency tree when available
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile patched Code - OSS
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Pets Council dependencies
+        run: npm install
+
+      - name: Cache Code - OSS checkout and dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .vendor/vscode/.git
+            .vendor/vscode/node_modules
+          key: code-oss-${{ runner.os }}-${{ hashFiles('config/upstream.json') }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Bootstrap patched source tree
+        run: npm run bootstrap
+
+      - name: Compile and verify desktop workbench
+        run: npm run desktop:smoke -- ${{ inputs.skip_code_oss_install && '--skip-install' || '' }}
+
+      - name: Publish smoke metadata
+        if: always()
+        run: |
+          printf 'branch=%s\ncommit=%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" > desktop-smoke.txt
+          printf 'upstream=' >> desktop-smoke.txt
+          cat config/upstream.json >> desktop-smoke.txt
+
+      - name: Upload smoke metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-metadata
+          path: desktop-smoke.txt
