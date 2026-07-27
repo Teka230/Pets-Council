@@ -1,21 +1,18 @@
 {
   "name": "pets-council",
   "displayName": "Pets Council",
-  "description": "A council of specialized companions for an AI coding workspace.",
-  "version": "0.9.0",
+  "description": "A Codex workspace with a consultative council of living companions.",
+  "version": "0.10.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": { "vscode": "^1.100.0" },
   "categories": ["Other"],
-  "activationEvents": ["onCommand:petsCouncil.openCouncil"],
+  "activationEvents": ["onCommand:petsCouncil.openCouncil", "onCommand:petsCouncil.openContextGraph"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "petsCouncil.openCouncil",
-        "title": "Open Council",
-        "category": "Pets Council"
-      }
+      { "command": "petsCouncil.openCouncil", "title": "Open Council", "category": "Pets Council" },
+      { "command": "petsCouncil.openContextGraph", "title": "Open Shared Context Graph", "category": "Pets Council" }
     ],
     "configuration": {
       "title": "Pets Council",
@@ -25,14 +22,21 @@
           "default": "",
           "scope": "machine",
           "description": "Optional path to the Codex CLI binary. Falls back to CODEX_BIN, then codex on PATH."
+        },
+        "petsCouncil.petMotion": {
+          "type": "string",
+          "enum": ["system", "full", "reduced"],
+          "default": "system",
+          "description": "Controls companion animation. System follows the operating-system reduced-motion preference."
         }
       }
-    }
+    },
+    "jsonValidation": [{ "fileMatch": "**/pet-pack.json", "url": "./schemas/pet-pack.schema.json" }]
   },
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/pets/petPack.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
