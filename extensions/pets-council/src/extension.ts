@@ -28,12 +28,17 @@ type DisconnectCodexMessage = Readonly<{
   type: 'disconnectCodex';
 }>;
 
+type StartCodexThreadMessage = Readonly<{
+  type: 'startCodexThread';
+}>;
+
 type CouncilWebviewMessage =
   | CopyPromptMessage
   | RefreshContextMessage
   | OpenFolderMessage
   | ConnectCodexMessage
-  | DisconnectCodexMessage;
+  | DisconnectCodexMessage
+  | StartCodexThreadMessage;
 
 export function activate(context: vscode.ExtensionContext): void {
   const runtime = new CodexRuntimeService(
@@ -131,6 +136,11 @@ function showCouncilPanel(runtime: CodexRuntimeService): void {
         return;
       }
 
+      if (message.type === 'startCodexThread') {
+        await runtime.startThread(currentWorkspaceDirectory());
+        return;
+      }
+
       const prompt = message.value.trim();
       if (!prompt) {
         return;
@@ -167,6 +177,18 @@ async function openFolderFromCouncil(): Promise<void> {
   await vscode.commands.executeCommand('vscode.openFolder', folder);
 }
 
+function currentWorkspaceDirectory(): string | undefined {
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  if (activeUri) {
+    const folder = vscode.workspace.getWorkspaceFolder(activeUri);
+    if (folder) {
+      return folder.uri.fsPath;
+    }
+  }
+
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
 function readConfiguredCodexBinary(): string | undefined {
   return vscode.workspace
     .getConfiguration('petsCouncil')
@@ -184,6 +206,7 @@ function isCouncilWebviewMessage(message: unknown): message is CouncilWebviewMes
     || candidate.type === 'openFolder'
     || candidate.type === 'connectCodex'
     || candidate.type === 'disconnectCodex'
+    || candidate.type === 'startCodexThread'
   ) {
     return true;
   }
