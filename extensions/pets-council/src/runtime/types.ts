@@ -53,6 +53,18 @@ export type CodexThreadStatus = Readonly<{
   thread?: CodexThreadInfo;
 }>;
 
+export type CodexTurnPhase = 'idle' | 'starting' | 'streaming' | 'completed' | 'error';
+
+export type CodexTurnStatus = Readonly<{
+  phase: CodexTurnPhase;
+  message: string;
+  turnId?: string;
+  userMessage?: string;
+  assistantMessage?: string;
+  startedAt?: number;
+  completedAt?: number;
+}>;
+
 export type CodexRuntimePhase = 'disconnected' | 'connecting' | 'ready' | 'error';
 
 export type CodexRuntimeStatus = Readonly<{
@@ -61,6 +73,7 @@ export type CodexRuntimeStatus = Readonly<{
   message: string;
   server?: CodexInitializeResult;
   thread: CodexThreadStatus;
+  turn: CodexTurnStatus;
 }>;
 
 export interface CodexMessageTransport {
