@@ -1,6 +1,9 @@
 name: Desktop smoke
 
 on:
+  push:
+    branches:
+      - feat/desktop-pets-context-intelligence
   workflow_dispatch:
     inputs:
       skip_code_oss_install:
@@ -37,7 +40,7 @@ jobs:
           path: |
             .vendor/vscode/.git
             .vendor/vscode/node_modules
-          key: code-oss-${{ runner.os }}-${{ hashFiles('config/upstream.json') }}-${{ hashFiles('package-lock.json') }}
+          key: code-oss-${{ runner.os }}-${{ hashFiles('config/upstream.json') }}-${{ hashFiles('package.json') }}
 
       - name: Bootstrap patched source tree
         run: npm run bootstrap
