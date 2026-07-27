@@ -1,6 +1,7 @@
 import { CodexAppServerClient } from './client';
 import type {
   CodexRuntimeStatus,
+  CodexThreadStatus,
   CodexTransportFactory,
   RuntimeDisposable
 } from './types';
@@ -10,6 +11,7 @@ export class CodexRuntimeService {
   private clientCloseSubscription: RuntimeDisposable | undefined;
   private readonly listeners = new Set<(status: CodexRuntimeStatus) => void>();
   private connectionSequence = 0;
+  private threadSequence = 0;
   private statusValue: CodexRuntimeStatus;
 
   constructor(
@@ -43,7 +45,8 @@ export class CodexRuntimeService {
     this.setStatus({
       phase: 'connecting',
       binary,
-      message: 'Starting codex app-server and negotiating the initialize handshake…'
+      message: 'Starting codex app-server and negotiating the initialize handshake…',
+      thread: noThreadStatus()
     });
 
     try {
@@ -58,7 +61,8 @@ export class CodexRuntimeService {
         phase: 'ready',
         binary,
         message: 'Connected. No thread has been created and no prompt has been sent.',
-        server: client.serverInfo
+        server: client.serverInfo,
+        thread: noThreadStatus()
       });
     } catch (error) {
       if (sequence !== this.connectionSequence) {
@@ -69,13 +73,69 @@ export class CodexRuntimeService {
       this.setStatus({
         phase: 'error',
         binary,
+        message: normalizeError(error),
+        thread: noThreadStatus()
+      });
+    }
+  }
+
+  async startThread(cwd?: string): Promise<void> {
+    if (this.statusValue.phase !== 'ready' || !this.client) {
+      this.setThreadStatus({
+        phase: 'error',
+        message: 'Connect Codex before starting a session.'
+      });
+      return;
+    }
+
+    if (this.statusValue.thread.phase === 'starting') {
+      return;
+    }
+
+    const client = this.client;
+    const sequence = ++this.threadSequence;
+    this.setThreadStatus({
+      phase: 'starting',
+      message: 'Creating a Codex thread for the current workspace…'
+    });
+
+    try {
+      const thread = await client.startThread(cwd);
+      if (
+        sequence !== this.threadSequence
+        || this.client !== client
+        || this.statusValue.phase !== 'ready'
+      ) {
+        return;
+      }
+
+      this.setThreadStatus({
+        phase: 'ready',
+        message: 'Thread ready. No turn has been started and no prompt has been sent.',
+        thread
+      });
+    } catch (error) {
+      if (sequence !== this.threadSequence || this.client !== client) {
+        return;
+      }
+
+      this.setThreadStatus({
+        phase: 'error',
         message: normalizeError(error)
       });
     }
   }
 
+  clearThread(): void {
+    ++this.threadSequence;
+    if (this.statusValue.phase === 'ready') {
+      this.setThreadStatus(noThreadStatus());
+    }
+  }
+
   disconnect(): void {
     ++this.connectionSequence;
+    ++this.threadSequence;
     const binary = this.statusValue.binary;
     this.replaceClient(undefined);
     this.setStatus(disconnectedStatus(binary));
@@ -88,6 +148,7 @@ export class CodexRuntimeService {
 
   dispose(): void {
     ++this.connectionSequence;
+    ++this.threadSequence;
     this.replaceClient(undefined);
     this.listeners.clear();
   }
@@ -112,11 +173,20 @@ export class CodexRuntimeService {
       this.client = undefined;
       this.clientCloseSubscription?.dispose();
       this.clientCloseSubscription = undefined;
+      ++this.threadSequence;
       this.setStatus({
         phase: 'error',
         binary: this.statusValue.binary,
-        message: reason
+        message: reason,
+        thread: noThreadStatus()
       });
+    });
+  }
+
+  private setThreadStatus(thread: CodexThreadStatus): void {
+    this.setStatus({
+      ...this.statusValue,
+      thread
     });
   }
 
@@ -145,7 +215,15 @@ function disconnectedStatus(binary: string): CodexRuntimeStatus {
   return {
     phase: 'disconnected',
     binary,
-    message: 'Disconnected. Connecting is always an explicit user action.'
+    message: 'Disconnected. Connecting is always an explicit user action.',
+    thread: noThreadStatus()
+  };
+}
+
+function noThreadStatus(): CodexThreadStatus {
+  return {
+    phase: 'none',
+    message: 'No Codex thread exists for this runtime connection.'
   };
 }
 

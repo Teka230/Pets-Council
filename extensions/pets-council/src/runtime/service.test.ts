@@ -9,9 +9,11 @@ import type {
 class HandshakeTransport implements CodexMessageTransport {
   private readonly messageListeners = new Set<(message: unknown) => void>();
   private readonly closeListeners = new Set<(reason: string) => void>();
+  readonly sent: unknown[] = [];
   disposed = false;
 
   send(message: unknown): void {
+    this.sent.push(message);
     const candidate = message as { id?: number; method?: string };
     if (candidate.method === 'initialize') {
       queueMicrotask(() => this.emitMessage({
@@ -20,6 +22,25 @@ class HandshakeTransport implements CodexMessageTransport {
           userAgent: 'codex-test/1.0',
           platformFamily: 'unix',
           platformOs: 'linux'
+        }
+      }));
+    }
+    if (candidate.method === 'thread/start') {
+      queueMicrotask(() => this.emitMessage({
+        id: candidate.id,
+        result: {
+          thread: {
+            id: 'thread-1',
+            sessionId: 'session-1',
+            preview: '',
+            modelProvider: 'openai',
+            cwd: '/workspace'
+          },
+          model: 'gpt-test',
+          modelProvider: 'openai',
+          cwd: '/workspace',
+          approvalPolicy: 'on-request',
+          approvalsReviewer: 'user'
         }
       }));
     }
@@ -76,9 +97,40 @@ test('becomes ready only after the initialize handshake', async () => {
 
   assert.deepEqual(phases, ['connecting', 'ready']);
   assert.equal(service.status.phase, 'ready');
+  assert.equal(service.status.thread.phase, 'none');
   assert.equal(service.status.server?.userAgent, 'codex-test/1.0');
 
   service.dispose();
+});
+
+test('starts a workspace thread without starting a turn', async () => {
+  const transport = new HandshakeTransport();
+  const service = new CodexRuntimeService('codex', async () => transport);
+  await service.connect();
+
+  await service.startThread('/workspace');
+
+  assert.equal(service.status.thread.phase, 'ready');
+  assert.equal(service.status.thread.thread?.id, 'thread-1');
+  assert.match(service.status.thread.message, /No turn has been started/);
+  assert.deepEqual(transport.sent[2], {
+    id: 1,
+    method: 'thread/start',
+    params: {
+      cwd: '/workspace',
+      approvalsReviewer: 'user'
+    }
+  });
+  service.dispose();
+});
+
+test('does not start a thread before the runtime is connected', async () => {
+  const service = new CodexRuntimeService('codex', async () => new HandshakeTransport());
+
+  await service.startThread('/workspace');
+
+  assert.equal(service.status.thread.phase, 'error');
+  assert.match(service.status.thread.message, /Connect Codex/);
 });
 
 test('keeps process launch failures visible and retryable', async () => {
@@ -96,10 +148,12 @@ test('moves to error when a ready runtime exits unexpectedly', async () => {
   const transport = new HandshakeTransport();
   const service = new CodexRuntimeService('codex', async () => transport);
   await service.connect();
+  await service.startThread('/workspace');
 
   transport.emitClose('process exited unexpectedly');
 
   assert.equal(service.status.phase, 'error');
+  assert.equal(service.status.thread.phase, 'none');
   assert.match(service.status.message, /unexpectedly/);
 });
 
@@ -107,9 +161,11 @@ test('disconnects explicitly and disposes the process transport', async () => {
   const transport = new HandshakeTransport();
   const service = new CodexRuntimeService('codex', async () => transport);
   await service.connect();
+  await service.startThread('/workspace');
 
   service.disconnect();
 
   assert.equal(service.status.phase, 'disconnected');
+  assert.equal(service.status.thread.phase, 'none');
   assert.equal(transport.disposed, true);
 });

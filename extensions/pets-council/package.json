@@ -2,7 +2,7 @@
   "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A council of specialized companions for an AI coding workspace.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": {

@@ -1,19 +1,20 @@
 # Codex runtime adapter
 
-This document describes the first `codex app-server` integration slice.
+This document describes the current `codex app-server` integration boundary.
 
 ## Scope
 
-The current runtime proves only that Pets Council can:
+Pets Council can now:
 
 1. resolve a Codex CLI binary;
 2. start `codex app-server` over stdio;
 3. exchange newline-delimited JSON messages;
 4. complete the required initialization handshake;
-5. expose connection state and failure details to the user;
-6. stop the process explicitly.
+5. explicitly create a workspace-scoped thread;
+6. expose connection and thread state to the user;
+7. stop the process explicitly.
 
-It does **not** create or resume a thread, start a turn, stream model output, handle approvals, or inject a Council suggestion into Codex.
+It does **not** start a turn, send a prompt, stream model output, handle approvals, or inject a Council suggestion into Codex yet.
 
 ## Process launch
 
@@ -45,12 +46,7 @@ stdout → responses, requests, and notifications from app-server
 stderr → bounded diagnostic tail only
 ```
 
-The JSONL decoder:
-
-- accepts messages split across process chunks;
-- accepts multiple messages in one chunk;
-- rejects invalid JSON without echoing its payload into the error;
-- keeps framing independent from protocol semantics.
+The JSONL decoder accepts split and batched messages while keeping framing separate from protocol semantics.
 
 ## Initialization handshake
 
@@ -61,27 +57,32 @@ Pets Council                         codex app-server
      |                                      |
      |  { id: 1, method: initialize }       |
      |------------------------------------->|
-     |                                      |
      |  { id: 1, result: ... }              |
      |<-------------------------------------|
-     |                                      |
      |  { method: initialized }             |
      |------------------------------------->|
-     |                                      |
      |               ready                  |
 ```
 
-The client identifies itself as:
+The client identifies itself as `pets_council` version `0.5.0`. Experimental capabilities are not enabled.
 
-```json
-{
-  "name": "pets_council",
-  "title": "Pets Council",
-  "version": "0.4.0"
-}
+## Thread creation
+
+A thread is created only after the user presses **Start Codex session** or **New Codex session**.
+
+```text
+Handshake complete
+        ↓ explicit user action
+thread/start
+  ├── cwd: active workspace folder when available
+  └── approvalsReviewer: user
+        ↓
+Thread ready
 ```
 
-Experimental capabilities are not enabled in this slice.
+The response is reduced to an inspectable local summary containing the thread id, session id, workspace, model, model provider, approval policy, and approval reviewer when present.
+
+Creating a thread does not trigger model generation. The panel explicitly states that no turn has been started and no prompt has been sent.
 
 ## Runtime states
 
@@ -89,59 +90,49 @@ Experimental capabilities are not enabled in this slice.
 disconnected
      ↓ Connect Codex
 connecting
-     ├── initialize success → ready
-     └── launch/protocol failure → error
-ready
-     ├── explicit Disconnect → disconnected
-     └── unexpected process exit → error
-error
-     ↓ Retry connection
-connecting
+     ├── initialize success → ready / no thread
+     └── launch or protocol failure → error
+ready / no thread
+     ↓ Start Codex session
+thread starting
+     ├── thread/start success → thread ready
+     └── protocol failure → thread error
+thread ready
+     ├── New Codex session → thread starting
+     ├── Disconnect → disconnected
+     └── unexpected process exit → connection error
 ```
-
-`ready` means only that the transport and handshake succeeded. The UI explicitly states that no thread has been created and no prompt has been sent.
 
 ## Trust boundary
 
 - The process never starts automatically when the extension activates.
 - Opening a workspace does not connect Codex.
-- Connecting Codex does not create a conversation.
+- Connecting Codex does not create a thread.
+- Creating a thread does not start a turn or send a prompt.
+- Approval review is explicitly routed to the user for the thread.
 - No model request is made in this slice.
 - No server-reported `codexHome` path is rendered in the panel.
 - Stderr is bounded to a short diagnostic tail.
-- Disconnect sends `SIGTERM` and follows with `SIGKILL` only when the process does not exit.
+- Disconnect sends `SIGTERM` and follows with `SIGKILL` only when necessary.
 
 ## Tests
 
-The CI uses simulated transports rather than an authenticated Codex installation.
+CI uses simulated transports rather than an authenticated Codex installation.
 
-Tests cover:
-
-- JSONL framing across chunks;
-- multiple messages per chunk;
-- invalid JSON handling;
-- `initialize` then `initialized` ordering;
-- protocol errors;
-- notification routing;
-- process-close propagation;
-- binary-resolution precedence;
-- connection, retry, error, and disconnect states;
-- runtime rendering in both onboarding and active Council views.
+Tests cover JSONL framing, handshake ordering, protocol errors, notifications, process exits, binary resolution, thread request shape, thread response parsing, duplicate lifecycle protection, disconnect cleanup, and UI rendering.
 
 ## Next slice
 
-The next runtime PR can build on this boundary to add:
-
 ```text
-thread/start or thread/resume
+Thread ready
         ↓
-turn/start
+turn/start with explicit text input
         ↓
-item and turn notifications
+item/agentMessage/delta
+        ↓
+turn/completed
         ↓
 completed assistant response
-        ↓
-real CouncilTurn
 ```
 
-Approval requests must remain visible and require an explicit user decision.
+Approval requests must remain visible and require an explicit user decision before any approval-capable production flow is enabled.

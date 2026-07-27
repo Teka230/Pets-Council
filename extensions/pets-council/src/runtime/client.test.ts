@@ -26,9 +26,28 @@ class FakeTransport implements CodexMessageTransport {
 
   send(message: unknown): void {
     this.sent.push(message);
-    const candidate = message as { method?: string };
+    const candidate = message as { id?: number; method?: string };
     if (candidate.method === 'initialize') {
       queueMicrotask(() => this.emitMessage(this.initializeReply));
+    }
+    if (candidate.method === 'thread/start') {
+      queueMicrotask(() => this.emitMessage({
+        id: candidate.id,
+        result: {
+          thread: {
+            id: '0198-thread-id',
+            sessionId: 'session-tree-1',
+            preview: '',
+            modelProvider: 'openai',
+            cwd: '/workspace'
+          },
+          model: 'gpt-test',
+          modelProvider: 'openai',
+          cwd: '/workspace',
+          approvalPolicy: 'on-request',
+          approvalsReviewer: 'user'
+        }
+      }));
     }
   }
 
@@ -77,7 +96,7 @@ test('performs initialize followed by initialized', async () => {
         clientInfo: {
           name: 'pets_council',
           title: 'Pets Council',
-          version: '0.4.0'
+          version: '0.5.0'
         },
         capabilities: {}
       }
@@ -89,6 +108,31 @@ test('performs initialize followed by initialized', async () => {
 
   client.dispose();
   assert.equal(transport.disposed, true);
+});
+
+test('starts a thread with the workspace and explicit user approvals', async () => {
+  const transport = new FakeTransport();
+  const client = await CodexAppServerClient.connect(
+    async () => transport,
+    'codex',
+    100
+  );
+
+  const thread = await client.startThread('/workspace');
+
+  assert.deepEqual(transport.sent[2], {
+    id: 1,
+    method: 'thread/start',
+    params: {
+      cwd: '/workspace',
+      approvalsReviewer: 'user'
+    }
+  });
+  assert.equal(thread.id, '0198-thread-id');
+  assert.equal(thread.sessionId, 'session-tree-1');
+  assert.equal(thread.model, 'gpt-test');
+  assert.equal(thread.approvalsReviewer, 'user');
+  client.dispose();
 });
 
 test('surfaces initialize protocol errors', async () => {

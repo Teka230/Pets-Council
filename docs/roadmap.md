@@ -31,11 +31,12 @@
 - [x] Show disconnected, connecting, ready, and error states in the UI
 - [x] Add explicit connect, disconnect, retry, and binary configuration
 - [x] Add launch, protocol, timeout, and unexpected-exit tests
-- [ ] Create and resume threads
+- [x] Create a workspace-scoped thread with explicit user approval routing
+- [x] Show active thread identity and lifecycle in the UI
+- [ ] Resume persisted threads
 - [ ] Map turns, streaming items, and completion events
 - [ ] Map approval requests and explicit responses
 - [ ] Replace placeholder conversation content with the real completed turn
-- [ ] Show active thread and permission state in the UI
 
 ## Milestone 3 — Actionable suggestions
 
