@@ -61,7 +61,7 @@ export class CodexCouncilProvider implements CouncilProvider {
         state: {
           phase: 'ready',
           provider: 'codex',
-          message: 'Codex completed one structured, read-only Council review.',
+          message: 'Codex completed one structured, read-only Council review using actor-specific projections.',
           turnId: turn.turnId
         }
       };
@@ -101,21 +101,26 @@ export const COUNCIL_OUTPUT_SCHEMA = {
 } as const;
 
 export function buildCouncilPrompt(turn: CouncilTurn): string {
-  const project = turn.projectContext?.summary?.trim();
+  const project = turn.actorContexts?.codex?.summary?.trim() ?? turn.projectContext?.summary?.trim();
   const selectedText = turn.workspace.selectedText?.trim();
   const changedFiles = turn.git?.changedFiles ?? [];
+  const roleProjections = COUNCIL_ROLE_IDS.map((role) => {
+    const summary = turn.actorContexts?.[role]?.summary?.trim();
+    return `${role.toUpperCase()} PROJECTION\n${summary || 'No actor-specific durable context is available.'}`;
+  }).join('\n\n');
 
   return [
     'Review the completed primary Codex turn as the Pets Council.',
     'Return only the structured object required by the output schema.',
     'Each role may return zero, one, or two suggestions. Silence is correct when a role adds no value.',
     'Suggestions are consultative prompts. Never claim that an action already ran, never approve permissions, and never modify files.',
+    'Use each role projection only for that role. Shared facts may appear in more than one projection, but do not collapse the role contracts.',
     '',
     'ROLE CONTRACTS',
     '- architect: the next bounded implementation slice.',
     '- guardian: concrete risks, regressions, assumptions, or missing tests.',
     '- strategist: sequencing, scope, and trade-offs only when useful.',
-    '- notetaker: durable decisions, open questions, or provenance that the Greffier should preserve.',
+    '- notetaker: durable decisions, open questions, supersession, or provenance that the Greffier should preserve.',
     '',
     `USER MESSAGE\n${turn.userMessage}`,
     '',
@@ -125,7 +130,9 @@ export function buildCouncilPrompt(turn: CouncilTurn): string {
     '',
     `GIT\nbranch=${turn.git?.branch ?? 'none'}\nchangedFiles=${changedFiles.length ? changedFiles.join(', ') : 'none'}\ndiffSummary=${turn.git?.diffSummary ?? 'none'}`,
     '',
-    `SHARED CONTEXT GRAPH PROJECTION\n${project || 'No durable project context is available yet.'}`
+    `PRIMARY CODEX CONTEXT PROJECTION\n${project || 'No durable project context is available yet.'}`,
+    '',
+    `ROLE-SPECIFIC PROJECTED CONTEXT\n${roleProjections}`
   ].join('\n');
 }
 
@@ -135,97 +142,39 @@ export function parseCouncilReview(raw: string, turnId: string): CouncilReview {
     role,
     suggestions: parseRoleSuggestions(parsed[role], role, turnId)
   }));
-
   return { turnId, roles };
 }
 
-function parseRoleSuggestions(
-  value: unknown,
-  role: CouncilRoleId,
-  turnId: string
-): readonly CouncilSuggestion[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .slice(0, MAX_SUGGESTIONS_PER_ROLE)
-    .map((candidate, index) => parseSuggestion(candidate, role, turnId, index))
-    .filter((suggestion): suggestion is CouncilSuggestion => Boolean(suggestion));
+function parseRoleSuggestions(value: unknown,role: CouncilRoleId,turnId: string): readonly CouncilSuggestion[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_SUGGESTIONS_PER_ROLE).map((candidate, index) => parseSuggestion(candidate, role, turnId, index)).filter((suggestion): suggestion is CouncilSuggestion => Boolean(suggestion));
 }
 
-function parseSuggestion(
-  value: unknown,
-  role: CouncilRoleId,
-  turnId: string,
-  index: number
-): CouncilSuggestion | undefined {
-  if (typeof value !== 'object' || value === null) {
-    return undefined;
-  }
-
+function parseSuggestion(value: unknown,role: CouncilRoleId,turnId: string,index: number): CouncilSuggestion | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
   const candidate = value as Record<string, unknown>;
   const title = boundedString(candidate.title, 160);
   const rationale = boundedString(candidate.rationale, 600);
   const prompt = boundedString(candidate.prompt, MAX_FIELD_LENGTH);
-  if (!title || !rationale || !prompt) {
-    return undefined;
-  }
-
-  return {
-    id: `${turnId}:${role}:codex-${index + 1}`,
-    role,
-    title,
-    rationale,
-    prompt,
-    actionLabel: 'Use in Codex'
-  };
+  if (!title || !rationale || !prompt) return undefined;
+  return {id: `${turnId}:${role}:codex-${index + 1}`,role,title,rationale,prompt,actionLabel: 'Use in Codex'};
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
-  const withoutFence = trimmed.startsWith('```')
-    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-    : trimmed;
+  const withoutFence = trimmed.startsWith('```') ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '') : trimmed;
   const value = JSON.parse(withoutFence) as unknown;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Council output was not a JSON object.');
-  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Council output was not a JSON object.');
   return value as Record<string, unknown>;
 }
 
 function boundedString(value: unknown, maxLength: number): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
+  if (typeof value !== 'string') return undefined;
   const compact = value.replace(/\s+/g, ' ').trim();
-  if (!compact) {
-    return undefined;
-  }
+  if (!compact) return undefined;
   return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength - 1)}…`;
 }
-
-function normalizeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export function reviewingCouncilState(turnId: string): CouncilReviewState {
-  return {
-    phase: 'reviewing',
-    provider: 'codex',
-    message: 'The four companions are reviewing the completed Codex turn…',
-    turnId
-  };
-}
-
-export function idleCouncilState(): CouncilReviewState {
-  return {
-    phase: 'idle',
-    provider: 'deterministic',
-    message: 'The Council is waiting for useful project evidence.'
-  };
-}
-
-export function emptyReviewForState(turnId: string): CouncilReview {
-  return emptyCouncilReview(turnId);
-}
+function normalizeError(error: unknown): string {return error instanceof Error ? error.message : String(error);}
+export function reviewingCouncilState(turnId: string): CouncilReviewState {return {phase:'reviewing',provider:'codex',message:'The four companions are reviewing the completed Codex turn through separate context projections…',turnId};}
+export function idleCouncilState(): CouncilReviewState {return {phase:'idle',provider:'deterministic',message:'The Council is waiting for useful project evidence.'};}
+export function emptyReviewForState(turnId: string): CouncilReview {return emptyCouncilReview(turnId);}
