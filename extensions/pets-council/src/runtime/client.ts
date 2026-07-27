@@ -1,6 +1,7 @@
 import type {
   CodexInitializeResult,
   CodexMessageTransport,
+  CodexThreadInfo,
   CodexTransportFactory,
   JsonRpcId,
   JsonRpcNotification,
@@ -51,21 +52,38 @@ export class CodexAppServerClient {
     }
   }
 
-  request(method: string, params?: unknown, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<unknown> {
+  request<T = unknown>(
+    method: string,
+    params?: unknown,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+  ): Promise<T> {
     if (this.closed) {
       return Promise.reject(new Error('Codex app-server connection is closed.'));
     }
 
     const id = this.nextRequestId++;
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Codex app-server request timed out: ${method}`));
       }, timeoutMs);
 
-      this.pending.set(id, { resolve, reject, timeout });
+      this.pending.set(id, {
+        resolve: (value) => resolve(value as T),
+        reject,
+        timeout
+      });
       this.transport.send({ id, method, ...(params === undefined ? {} : { params }) });
     });
+  }
+
+  async startThread(cwd?: string): Promise<CodexThreadInfo> {
+    const result = await this.request<unknown>('thread/start', {
+      ...(cwd ? { cwd } : {}),
+      approvalsReviewer: 'user'
+    });
+
+    return parseThreadStartResult(result);
   }
 
   notify(method: string, params?: unknown): void {
@@ -162,7 +180,7 @@ class BootstrapClient {
       clientInfo: {
         name: 'pets_council',
         title: 'Pets Council',
-        version: '0.4.0'
+        version: '0.5.0'
       },
       capabilities: {}
     }, timeoutMs);
@@ -246,8 +264,48 @@ function parseInitializeResult(value: unknown): CodexInitializeResult {
   };
 }
 
+export function parseThreadStartResult(value: unknown): CodexThreadInfo {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Codex app-server returned an invalid thread/start result.');
+  }
+
+  const response = value as Record<string, unknown>;
+  if (typeof response.thread !== 'object' || response.thread === null) {
+    throw new Error('Codex app-server thread/start result did not include a thread.');
+  }
+
+  const thread = response.thread as Record<string, unknown>;
+  const id = requiredString(thread.id, 'thread.id');
+
+  return {
+    id,
+    sessionId: optionalString(thread.sessionId),
+    preview: optionalString(thread.preview),
+    cwd: optionalString(response.cwd) ?? optionalString(thread.cwd),
+    model: optionalString(response.model),
+    modelProvider: optionalString(response.modelProvider) ?? optionalString(thread.modelProvider),
+    approvalPolicy: stringLike(response.approvalPolicy),
+    approvalsReviewer: stringLike(response.approvalsReviewer)
+  };
+}
+
+function requiredString(value: unknown, label: string): string {
+  const parsed = optionalString(value);
+  if (!parsed) {
+    throw new Error(`Codex app-server returned an invalid ${label}.`);
+  }
+  return parsed;
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function stringLike(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return value === undefined || value === null ? undefined : JSON.stringify(value);
 }
 
 function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
