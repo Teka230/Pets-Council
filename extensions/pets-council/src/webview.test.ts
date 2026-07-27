@@ -9,7 +9,11 @@ import { renderCouncilHtml } from './webview';
 const DISCONNECTED_RUNTIME: CodexRuntimeStatus = {
   phase: 'disconnected',
   binary: 'codex',
-  message: 'Disconnected. Connecting is always an explicit user action.'
+  message: 'Disconnected. Connecting is always an explicit user action.',
+  thread: {
+    phase: 'none',
+    message: 'No Codex thread exists for this runtime connection.'
+  }
 };
 
 const READY_RUNTIME: CodexRuntimeStatus = {
@@ -20,6 +24,26 @@ const READY_RUNTIME: CodexRuntimeStatus = {
     userAgent: 'codex/0.1',
     platformFamily: 'unix',
     platformOs: 'darwin'
+  },
+  thread: {
+    phase: 'none',
+    message: 'No Codex thread exists for this runtime connection.'
+  }
+};
+
+const THREAD_READY_RUNTIME: CodexRuntimeStatus = {
+  ...READY_RUNTIME,
+  thread: {
+    phase: 'ready',
+    message: 'Thread ready. No turn has been started and no prompt has been sent.',
+    thread: {
+      id: '0198-long-codex-thread-id-0001',
+      sessionId: 'session-1',
+      cwd: '/workspace',
+      model: 'gpt-test',
+      modelProvider: 'openai',
+      approvalsReviewer: 'user'
+    }
   }
 };
 
@@ -81,10 +105,26 @@ test('renders a completed runtime handshake without implying a thread exists', (
   );
 
   assert.match(html, /Handshake complete/);
-  assert.match(html, /No thread has been created/);
+  assert.match(html, /No Codex thread exists/);
+  assert.match(html, /Start Codex session/);
   assert.match(html, /codex\/0\.1/);
   assert.match(html, /Disconnect/);
   assert.doesNotMatch(html, /Connect Codex/);
+});
+
+test('renders the active thread without implying that a turn ran', () => {
+  const html = renderCouncilHtml(
+    SAMPLE_COUNCIL_TURN,
+    reviewMockTurn(SAMPLE_COUNCIL_TURN),
+    THREAD_READY_RUNTIME,
+    'test-nonce'
+  );
+
+  assert.match(html, /Thread ready/);
+  assert.match(html, /No turn has been started/);
+  assert.match(html, /New Codex session/);
+  assert.match(html, /gpt-test/);
+  assert.match(html, /0198-lon…0001/);
 });
 
 test('renders a retry action after a runtime error', () => {
@@ -94,7 +134,11 @@ test('renders a retry action after a runtime error', () => {
     {
       phase: 'error',
       binary: 'codex',
-      message: 'binary not found'
+      message: 'binary not found',
+      thread: {
+        phase: 'none',
+        message: 'No Codex thread exists for this runtime connection.'
+      }
     },
     'test-nonce'
   );
