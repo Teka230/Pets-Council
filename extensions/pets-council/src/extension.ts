@@ -4,6 +4,7 @@ import type { CouncilReview, CouncilTurn } from './domain';
 import { reviewMockTurn } from './mockCouncil';
 import { buildCouncilTurnFromCompletedCodexTurn } from './runtime/councilBridge';
 import { CodexRuntimeService, resolveCodexBinary } from './runtime/service';
+import { CodexSessionStore, createWorkspaceSessionKey } from './runtime/sessionStore';
 import { createStdioCodexTransport } from './runtime/stdioTransport';
 import type { CodexApprovalDecision } from './runtime/types';
 import { renderCouncilHtml } from './webview';
@@ -22,6 +23,7 @@ type SimpleMessage = Readonly<{
     | 'connectCodex'
     | 'disconnectCodex'
     | 'startCodexThread'
+    | 'resumeCodexThread'
     | 'interruptCodexTurn';
 }>;
 
@@ -36,6 +38,33 @@ export function activate(context: vscode.ExtensionContext): void {
     resolveCodexBinary(readConfiguredCodexBinary()),
     createStdioCodexTransport
   );
+  const sessionStore = new CodexSessionStore(context.workspaceState);
+  let sessionKey = currentWorkspaceSessionKey();
+  let persistedThreadId = sessionStore.load(sessionKey)?.threadId;
+  runtime.setResumeCandidate(sessionStore.load(sessionKey));
+
+  const persistenceSubscription = runtime.onDidChange((status) => {
+    const threadId = status.thread.thread?.id;
+    if (status.thread.phase !== 'ready' || !threadId || threadId === persistedThreadId) {
+      return;
+    }
+
+    persistedThreadId = threadId;
+    void sessionStore.save(sessionKey, threadId).then((candidate) => {
+      runtime.setResumeCandidate(candidate);
+    });
+  });
+
+  const workspaceSubscription = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    if (runtime.status.thread.phase === 'ready') {
+      return;
+    }
+    sessionKey = currentWorkspaceSessionKey();
+    const candidate = sessionStore.load(sessionKey);
+    persistedThreadId = candidate?.threadId;
+    runtime.setResumeCandidate(candidate);
+  });
+
   const openCouncil = vscode.commands.registerCommand(
     'petsCouncil.openCouncil',
     () => showCouncilPanel(runtime)
@@ -49,6 +78,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     openCouncil,
     configurationSubscription,
+    workspaceSubscription,
+    persistenceSubscription,
     { dispose: () => runtime.dispose() }
   );
 }
@@ -136,6 +167,9 @@ function showCouncilPanel(runtime: CodexRuntimeService): void {
         case 'startCodexThread':
           await runtime.startThread(currentWorkspaceDirectory());
           return;
+        case 'resumeCodexThread':
+          await runtime.resumeThread(undefined, currentWorkspaceDirectory());
+          return;
         case 'startCodexTurn':
           await runtime.startTurn(message.value, currentWorkspaceDirectory());
           return;
@@ -190,6 +224,12 @@ function currentWorkspaceDirectory(): string | undefined {
   return activeFolder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
+function currentWorkspaceSessionKey(): string {
+  return createWorkspaceSessionKey(
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.toString())
+  );
+}
+
 function readConfiguredCodexBinary(): string | undefined {
   return vscode.workspace
     .getConfiguration('petsCouncil')
@@ -213,6 +253,7 @@ function isCouncilWebviewMessage(message: unknown): message is CouncilWebviewMes
     || candidate.type === 'connectCodex'
     || candidate.type === 'disconnectCodex'
     || candidate.type === 'startCodexThread'
+    || candidate.type === 'resumeCodexThread'
     || candidate.type === 'interruptCodexTurn'
   ) {
     return true;
