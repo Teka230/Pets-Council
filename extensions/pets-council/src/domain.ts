@@ -1,5 +1,7 @@
 export const COUNCIL_ROLE_IDS = ['architect', 'guardian', 'strategist', 'notetaker'] as const;
 export type CouncilRoleId = (typeof COUNCIL_ROLE_IDS)[number];
+export const CONTEXT_PROJECTION_ACTORS = ['codex', ...COUNCIL_ROLE_IDS] as const;
+export type ContextProjectionActor = (typeof CONTEXT_PROJECTION_ACTORS)[number];
 
 export type CouncilRoleDefinition = Readonly<{
   id: CouncilRoleId;
@@ -54,10 +56,13 @@ export type CouncilRuntimeSource = Readonly<{
 }>;
 
 export type ProjectContextSlice = Readonly<{
+  actor?: ContextProjectionActor;
   summary: string;
   sources: readonly string[];
   graphNodeCount: number;
   graphEdgeCount: number;
+  openQuestionCount?: number;
+  supersededCount?: number;
   storagePath?: string;
   truncated?: boolean;
 }>;
@@ -69,6 +74,7 @@ export type CouncilTurn = Readonly<{
   capture: CouncilCapture;
   runtime?: CouncilRuntimeSource;
   projectContext?: ProjectContextSlice;
+  actorContexts?: Readonly<Partial<Record<ContextProjectionActor, ProjectContextSlice>>>;
   workspace: Readonly<{
     name?: string;
     activeFile?: string;
