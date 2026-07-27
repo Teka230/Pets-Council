@@ -3,15 +3,19 @@ import type {
   CodexRuntimeStatus,
   CodexThreadStatus,
   CodexTransportFactory,
+  CodexTurnStatus,
+  JsonRpcNotification,
   RuntimeDisposable
 } from './types';
 
 export class CodexRuntimeService {
   private client: CodexAppServerClient | undefined;
   private clientCloseSubscription: RuntimeDisposable | undefined;
+  private clientNotificationSubscription: RuntimeDisposable | undefined;
   private readonly listeners = new Set<(status: CodexRuntimeStatus) => void>();
   private connectionSequence = 0;
   private threadSequence = 0;
+  private turnSequence = 0;
   private statusValue: CodexRuntimeStatus;
 
   constructor(
@@ -46,7 +50,8 @@ export class CodexRuntimeService {
       phase: 'connecting',
       binary,
       message: 'Starting codex app-server and negotiating the initialize handshake…',
-      thread: noThreadStatus()
+      thread: noThreadStatus(),
+      turn: idleTurnStatus()
     });
 
     try {
@@ -62,7 +67,8 @@ export class CodexRuntimeService {
         binary,
         message: 'Connected. No thread has been created and no prompt has been sent.',
         server: client.serverInfo,
-        thread: noThreadStatus()
+        thread: noThreadStatus(),
+        turn: idleTurnStatus()
       });
     } catch (error) {
       if (sequence !== this.connectionSequence) {
@@ -74,7 +80,8 @@ export class CodexRuntimeService {
         phase: 'error',
         binary,
         message: normalizeError(error),
-        thread: noThreadStatus()
+        thread: noThreadStatus(),
+        turn: idleTurnStatus()
       });
     }
   }
@@ -88,15 +95,20 @@ export class CodexRuntimeService {
       return;
     }
 
-    if (this.statusValue.thread.phase === 'starting') {
+    if (this.statusValue.thread.phase === 'starting' || isTurnRunning(this.statusValue.turn)) {
       return;
     }
 
     const client = this.client;
     const sequence = ++this.threadSequence;
-    this.setThreadStatus({
-      phase: 'starting',
-      message: 'Creating a Codex thread for the current workspace…'
+    ++this.turnSequence;
+    this.setStatus({
+      ...this.statusValue,
+      thread: {
+        phase: 'starting',
+        message: 'Creating a Codex thread for the current workspace…'
+      },
+      turn: idleTurnStatus()
     });
 
     try {
@@ -109,10 +121,14 @@ export class CodexRuntimeService {
         return;
       }
 
-      this.setThreadStatus({
-        phase: 'ready',
-        message: 'Thread ready. No turn has been started and no prompt has been sent.',
-        thread
+      this.setStatus({
+        ...this.statusValue,
+        thread: {
+          phase: 'ready',
+          message: 'Thread ready. No turn has been started and no prompt has been sent.',
+          thread
+        },
+        turn: idleTurnStatus()
       });
     } catch (error) {
       if (sequence !== this.threadSequence || this.client !== client) {
@@ -126,16 +142,92 @@ export class CodexRuntimeService {
     }
   }
 
+  async startTurn(userMessage: string, cwd?: string): Promise<void> {
+    const text = userMessage.trim();
+    if (!text) {
+      this.setTurnStatus({
+        phase: 'error',
+        message: 'Write a prompt before starting a Codex turn.'
+      });
+      return;
+    }
+
+    const thread = this.statusValue.thread.thread;
+    if (
+      this.statusValue.phase !== 'ready'
+      || !this.client
+      || this.statusValue.thread.phase !== 'ready'
+      || !thread
+    ) {
+      this.setTurnStatus({
+        phase: 'error',
+        message: 'Start a Codex session before sending a prompt.',
+        userMessage: text
+      });
+      return;
+    }
+
+    if (isTurnRunning(this.statusValue.turn)) {
+      return;
+    }
+
+    const client = this.client;
+    const sequence = ++this.turnSequence;
+    this.setTurnStatus({
+      phase: 'starting',
+      message: 'Sending the prompt to Codex…',
+      userMessage: text,
+      assistantMessage: ''
+    });
+
+    try {
+      const turnId = await client.startTurn(thread.id, text, cwd);
+      if (
+        sequence !== this.turnSequence
+        || this.client !== client
+        || this.statusValue.phase !== 'ready'
+      ) {
+        return;
+      }
+
+      this.setTurnStatus({
+        ...this.statusValue.turn,
+        phase: 'streaming',
+        message: 'Codex is responding…',
+        turnId,
+        userMessage: text,
+        assistantMessage: this.statusValue.turn.assistantMessage ?? ''
+      });
+    } catch (error) {
+      if (sequence !== this.turnSequence || this.client !== client) {
+        return;
+      }
+
+      this.setTurnStatus({
+        phase: 'error',
+        message: normalizeError(error),
+        userMessage: text,
+        assistantMessage: this.statusValue.turn.assistantMessage
+      });
+    }
+  }
+
   clearThread(): void {
     ++this.threadSequence;
+    ++this.turnSequence;
     if (this.statusValue.phase === 'ready') {
-      this.setThreadStatus(noThreadStatus());
+      this.setStatus({
+        ...this.statusValue,
+        thread: noThreadStatus(),
+        turn: idleTurnStatus()
+      });
     }
   }
 
   disconnect(): void {
     ++this.connectionSequence;
     ++this.threadSequence;
+    ++this.turnSequence;
     const binary = this.statusValue.binary;
     this.replaceClient(undefined);
     this.setStatus(disconnectedStatus(binary));
@@ -149,6 +241,7 @@ export class CodexRuntimeService {
   dispose(): void {
     ++this.connectionSequence;
     ++this.threadSequence;
+    ++this.turnSequence;
     this.replaceClient(undefined);
     this.listeners.clear();
   }
@@ -156,6 +249,8 @@ export class CodexRuntimeService {
   private replaceClient(client: CodexAppServerClient | undefined): void {
     this.clientCloseSubscription?.dispose();
     this.clientCloseSubscription = undefined;
+    this.clientNotificationSubscription?.dispose();
+    this.clientNotificationSubscription = undefined;
 
     const previous = this.client;
     this.client = client;
@@ -173,20 +268,123 @@ export class CodexRuntimeService {
       this.client = undefined;
       this.clientCloseSubscription?.dispose();
       this.clientCloseSubscription = undefined;
+      this.clientNotificationSubscription?.dispose();
+      this.clientNotificationSubscription = undefined;
       ++this.threadSequence;
+      ++this.turnSequence;
       this.setStatus({
         phase: 'error',
         binary: this.statusValue.binary,
         message: reason,
-        thread: noThreadStatus()
+        thread: noThreadStatus(),
+        turn: idleTurnStatus()
       });
     });
+
+    this.clientNotificationSubscription = client.onNotification((notification) => {
+      if (this.client === client) {
+        this.handleNotification(notification);
+      }
+    });
+  }
+
+  private handleNotification(notification: JsonRpcNotification): void {
+    const params = objectValue(notification.params);
+    if (!params) {
+      return;
+    }
+
+    const activeThreadId = this.statusValue.thread.thread?.id;
+    const notificationThreadId = optionalString(params.threadId);
+    if (activeThreadId && notificationThreadId && notificationThreadId !== activeThreadId) {
+      return;
+    }
+
+    if (notification.method === 'turn/started') {
+      const turn = objectValue(params.turn);
+      const turnId = optionalString(turn?.id);
+      if (!turnId) {
+        return;
+      }
+
+      this.setTurnStatus({
+        ...this.statusValue.turn,
+        phase: 'streaming',
+        message: 'Codex is responding…',
+        turnId,
+        startedAt: numberValue(turn?.startedAt) ?? Date.now() / 1000,
+        assistantMessage: this.statusValue.turn.assistantMessage ?? ''
+      });
+      return;
+    }
+
+    if (notification.method === 'item/agentMessage/delta') {
+      const delta = optionalString(params.delta);
+      const turnId = optionalString(params.turnId);
+      if (!delta || !matchesActiveTurn(this.statusValue.turn, turnId)) {
+        return;
+      }
+
+      this.setTurnStatus({
+        ...this.statusValue.turn,
+        phase: 'streaming',
+        message: 'Codex is responding…',
+        turnId: this.statusValue.turn.turnId ?? turnId,
+        assistantMessage: `${this.statusValue.turn.assistantMessage ?? ''}${delta}`
+      });
+      return;
+    }
+
+    if (notification.method === 'item/completed') {
+      const turnId = optionalString(params.turnId);
+      if (!matchesActiveTurn(this.statusValue.turn, turnId)) {
+        return;
+      }
+
+      const item = objectValue(params.item);
+      if (item?.type === 'agentMessage' && typeof item.text === 'string') {
+        this.setTurnStatus({
+          ...this.statusValue.turn,
+          turnId: this.statusValue.turn.turnId ?? turnId,
+          assistantMessage: item.text
+        });
+      }
+      return;
+    }
+
+    if (notification.method === 'turn/completed') {
+      const turn = objectValue(params.turn);
+      const turnId = optionalString(turn?.id) ?? optionalString(params.turnId);
+      if (!matchesActiveTurn(this.statusValue.turn, turnId)) {
+        return;
+      }
+
+      const status = optionalString(turn?.status);
+      const error = objectValue(turn?.error);
+      const failed = status === 'failed' || Boolean(error);
+      this.setTurnStatus({
+        ...this.statusValue.turn,
+        phase: failed ? 'error' : 'completed',
+        message: failed
+          ? optionalString(error?.message) ?? 'The Codex turn failed.'
+          : 'Codex completed the turn.',
+        turnId: this.statusValue.turn.turnId ?? turnId,
+        completedAt: numberValue(turn?.completedAt) ?? Date.now() / 1000
+      });
+    }
   }
 
   private setThreadStatus(thread: CodexThreadStatus): void {
     this.setStatus({
       ...this.statusValue,
       thread
+    });
+  }
+
+  private setTurnStatus(turn: CodexTurnStatus): void {
+    this.setStatus({
+      ...this.statusValue,
+      turn
     });
   }
 
@@ -216,7 +414,8 @@ function disconnectedStatus(binary: string): CodexRuntimeStatus {
     phase: 'disconnected',
     binary,
     message: 'Disconnected. Connecting is always an explicit user action.',
-    thread: noThreadStatus()
+    thread: noThreadStatus(),
+    turn: idleTurnStatus()
   };
 }
 
@@ -225,6 +424,35 @@ function noThreadStatus(): CodexThreadStatus {
     phase: 'none',
     message: 'No Codex thread exists for this runtime connection.'
   };
+}
+
+function idleTurnStatus(): CodexTurnStatus {
+  return {
+    phase: 'idle',
+    message: 'No Codex turn has been started in this session.'
+  };
+}
+
+function isTurnRunning(turn: CodexTurnStatus): boolean {
+  return turn.phase === 'starting' || turn.phase === 'streaming';
+}
+
+function matchesActiveTurn(turn: CodexTurnStatus, candidateId: string | undefined): boolean {
+  return !turn.turnId || !candidateId || turn.turnId === candidateId;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function normalizeError(error: unknown): string {
