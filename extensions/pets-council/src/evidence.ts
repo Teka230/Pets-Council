@@ -7,17 +7,21 @@ export type CouncilEvidence = Readonly<{
   hasGitBranch: boolean;
   hasChangedFiles: boolean;
   hasDiffSummary: boolean;
+  hasProjectContext: boolean;
 }>;
 
 export function inspectCouncilEvidence(turn: CouncilTurn): CouncilEvidence {
   const trustedConversation = turn.capture.mode === 'sample' || turn.runtime?.source === 'codex';
+  const projectSummary = turn.projectContext?.summary.trim();
+  const defaultEmptyProjection = 'No durable graph nodes or configured project sources are available yet.';
   return {
     hasConversation: trustedConversation && Boolean(turn.userMessage.trim() || turn.assistantResponse.trim()),
     hasActiveFile: Boolean(turn.workspace.activeFile),
     hasSelection: Boolean(turn.workspace.selectedText?.trim()),
     hasGitBranch: Boolean(turn.git?.branch),
     hasChangedFiles: (turn.git?.changedFiles.length ?? 0) > 0,
-    hasDiffSummary: Boolean(turn.git?.diffSummary?.trim())
+    hasDiffSummary: Boolean(turn.git?.diffSummary?.trim()),
+    hasProjectContext: Boolean(projectSummary && projectSummary !== defaultEmptyProjection)
   };
 }
 
