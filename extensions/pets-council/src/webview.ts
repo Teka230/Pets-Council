@@ -8,6 +8,7 @@ import {
   type CouncilTurn
 } from './domain';
 import { hasUsefulCouncilEvidence } from './evidence';
+import type { CodexRuntimeStatus } from './runtime/types';
 
 const EMPTY_ROLE_STATUS: Record<CouncilRoleId, string> = {
   architect: 'Waiting for project context',
@@ -19,10 +20,11 @@ const EMPTY_ROLE_STATUS: Record<CouncilRoleId, string> = {
 export function renderCouncilHtml(
   turn: CouncilTurn,
   review: CouncilReview,
+  runtime: CodexRuntimeStatus,
   nonce: string
 ): string {
   if (!hasUsefulCouncilEvidence(turn)) {
-    return renderEmptyStateHtml(turn, review, nonce);
+    return renderEmptyStateHtml(turn, review, runtime, nonce);
   }
 
   const activeRoles = review.roles.filter((role) => role.suggestions.length > 0).length;
@@ -47,6 +49,7 @@ export function renderCouncilHtml(
           The local capture produced ${suggestionCount} ${pluralize(suggestionCount, 'suggestion')} from concrete editor or Git evidence.
           Choose one to prepare the next prompt; nothing executes automatically.
         </p>
+        ${renderRuntimeCard(runtime)}
         ${renderContextPills(turn)}
         <p class="privacy-note">
           Pets Council does not scan file contents in this slice. Only text explicitly selected in the editor may be captured, up to 2,000 characters.
@@ -62,6 +65,7 @@ export function renderCouncilHtml(
 function renderEmptyStateHtml(
   turn: CouncilTurn,
   review: CouncilReview,
+  runtime: CodexRuntimeStatus,
   nonce: string
 ): string {
   const roleDefinitions = roleDefinitionMap();
@@ -80,7 +84,7 @@ function renderEmptyStateHtml(
             Open a folder or workspace so the Council can review the active file, an explicit selection,
             the current Git branch, and bounded change statistics.
           </p>
-          <div class="empty-actions">
+          <div class="button-row">
             <button class="action" id="open-folder" type="button">Open folder</button>
             <button class="action secondary" id="refresh-context" type="button">Refresh context</button>
           </div>
@@ -88,10 +92,49 @@ function renderEmptyStateHtml(
             The Council stays silent until it has concrete evidence. Captured locally at ${escapeHtml(formatCapturedAt(turn.capture.capturedAt))}.
           </p>
         </section>
+        ${renderRuntimeCard(runtime)}
         <section class="roles" aria-label="Council waiting states">${roleCards}</section>
       </main>`,
     script: renderEmptyStateScript()
   });
+}
+
+function renderRuntimeCard(runtime: CodexRuntimeStatus): string {
+  const readyMetadata = runtime.phase === 'ready'
+    ? [runtime.server?.userAgent, runtime.server?.platformFamily, runtime.server?.platformOs]
+      .filter((value): value is string => Boolean(value))
+      .join(' · ')
+    : '';
+
+  const action = runtime.phase === 'ready'
+    ? '<button class="action secondary" id="disconnect-codex" type="button">Disconnect</button>'
+    : runtime.phase === 'connecting'
+      ? '<button class="action secondary" type="button" disabled>Connecting…</button>'
+      : `<button class="action" id="connect-codex" type="button">${runtime.phase === 'error' ? 'Retry connection' : 'Connect Codex'}</button>`;
+
+  return `
+    <section class="runtime runtime--${runtime.phase}" aria-label="Codex runtime status">
+      <div>
+        <p class="runtime__eyebrow">Codex runtime</p>
+        <p class="runtime__title">${escapeHtml(runtimeLabel(runtime))}</p>
+        <p class="runtime__message">${escapeHtml(runtime.message)}</p>
+        <p class="runtime__metadata">Binary: ${escapeHtml(runtime.binary)}${readyMetadata ? ` · ${escapeHtml(readyMetadata)}` : ''}</p>
+      </div>
+      <div class="runtime__action">${action}</div>
+    </section>`;
+}
+
+function runtimeLabel(runtime: CodexRuntimeStatus): string {
+  switch (runtime.phase) {
+    case 'connecting':
+      return 'Connecting to app-server';
+    case 'ready':
+      return 'Handshake complete';
+    case 'error':
+      return 'Connection failed';
+    default:
+      return 'Not connected';
+  }
 }
 
 function renderDocument(input: Readonly<{
@@ -121,6 +164,7 @@ function styles(): string {
     * { box-sizing: border-box; }
     body { margin: 0; padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
     button, textarea { font: inherit; }
+    button:disabled { cursor: wait; opacity: .7; }
     main { width: min(920px, 100%); margin: 0 auto; }
     .header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
     .eyebrow { margin: 0 0 8px; color: var(--vscode-descriptionForeground); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
@@ -133,9 +177,17 @@ function styles(): string {
     .warnings summary { cursor: pointer; font-weight: 700; }
     .warnings ul { margin: 10px 0 0; padding-left: 20px; }
     .warnings li { margin: 5px 0; color: var(--vscode-descriptionForeground); }
-    .empty-state { margin-bottom: 22px; padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 18px; background: var(--vscode-sideBar-background); }
-    .empty-actions, .composer__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .empty-state { margin-bottom: 16px; padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 18px; background: var(--vscode-sideBar-background); }
+    .button-row, .composer__actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .empty-note { margin: 16px 0 0; }
+    .runtime { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 22px; padding: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 14px; background: var(--vscode-editorWidget-background); }
+    .runtime--ready { border-color: var(--vscode-testing-iconPassed, var(--vscode-focusBorder)); }
+    .runtime--error { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); }
+    .runtime__eyebrow { margin: 0 0 4px; color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .runtime__title { margin: 0; font-weight: 700; }
+    .runtime__message { margin: 5px 0 0; color: var(--vscode-descriptionForeground); line-height: 1.45; }
+    .runtime__metadata { margin: 7px 0 0; color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; }
+    .runtime__action { flex: 0 0 auto; }
     .roles { display: grid; gap: 14px; }
     .role { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid var(--vscode-panel-border); border-radius: 16px; background: var(--vscode-sideBar-background); }
     .role--silent { opacity: .72; }
@@ -151,7 +203,7 @@ function styles(): string {
     .suggestion__rationale { margin: 7px 0 12px; color: var(--vscode-descriptionForeground); line-height: 1.5; }
     .silent-message { margin: 14px 0 0; color: var(--vscode-descriptionForeground); font-style: italic; }
     .action { padding: 7px 11px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 6px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
-    .action:hover { background: var(--vscode-button-hoverBackground); }
+    .action:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
     .secondary { color: var(--vscode-foreground); background: transparent; border-color: var(--vscode-panel-border); }
     .composer { position: sticky; bottom: 14px; margin-top: 22px; padding: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 16px; background: var(--vscode-editorWidget-background); box-shadow: 0 12px 32px rgb(0 0 0 / 20%); }
     .composer__label { display: block; margin-bottom: 8px; font-weight: 700; }
@@ -159,7 +211,7 @@ function styles(): string {
     textarea:focus, button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .composer__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
     .status { margin: 0; color: var(--vscode-descriptionForeground); font-size: 12px; }
-    @media (max-width: 620px) { body { padding: 16px; } .header-row { display: block; } .header-row > button { margin-top: 14px; } .role { grid-template-columns: 1fr; } }
+    @media (max-width: 620px) { body { padding: 16px; } .header-row, .runtime { display: block; } .header-row > button, .runtime__action { margin-top: 14px; } .role { grid-template-columns: 1fr; } }
   `;
 }
 
@@ -273,6 +325,7 @@ function renderWarnings(warnings: readonly string[]): string {
 function renderInteractiveScript(): string {
   return `
     const vscode = acquireVsCodeApi();
+    ${renderRuntimeScript()}
     const composer = document.getElementById('council-composer');
     const status = document.getElementById('composer-status');
     const savedState = vscode.getState();
@@ -328,12 +381,26 @@ function renderInteractiveScript(): string {
 function renderEmptyStateScript(): string {
   return `
     const vscode = acquireVsCodeApi();
+    ${renderRuntimeScript()}
     document.getElementById('open-folder').addEventListener('click', () => {
       vscode.postMessage({ type: 'openFolder' });
     });
     document.getElementById('refresh-context').addEventListener('click', () => {
       vscode.postMessage({ type: 'refreshContext' });
     });
+  `;
+}
+
+function renderRuntimeScript(): string {
+  return `
+    const connectCodex = document.getElementById('connect-codex');
+    if (connectCodex) {
+      connectCodex.addEventListener('click', () => vscode.postMessage({ type: 'connectCodex' }));
+    }
+    const disconnectCodex = document.getElementById('disconnect-codex');
+    if (disconnectCodex) {
+      disconnectCodex.addEventListener('click', () => vscode.postMessage({ type: 'disconnectCodex' }));
+    }
   `;
 }
 

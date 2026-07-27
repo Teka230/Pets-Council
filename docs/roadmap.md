@@ -24,12 +24,18 @@
 
 ## Milestone 2 — Codex runtime adapter
 
-- [ ] Connect to `codex app-server`
-- [ ] Map threads, turns, streaming events, and approvals
-- [ ] Keep the runtime behind a typed adapter
+- [x] Resolve and launch `codex app-server` over stdio
+- [x] Add JSONL framing and a typed transport boundary
+- [x] Complete the `initialize` then `initialized` handshake
+- [x] Keep connection lifecycle behind a typed adapter
+- [x] Show disconnected, connecting, ready, and error states in the UI
+- [x] Add explicit connect, disconnect, retry, and binary configuration
+- [x] Add launch, protocol, timeout, and unexpected-exit tests
+- [ ] Create and resume threads
+- [ ] Map turns, streaming items, and completion events
+- [ ] Map approval requests and explicit responses
 - [ ] Replace placeholder conversation content with the real completed turn
-- [ ] Show connection and permission state in the UI
-- [ ] Add failure and reconnection scenarios
+- [ ] Show active thread and permission state in the UI
 
 ## Milestone 3 — Actionable suggestions
 

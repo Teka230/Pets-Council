@@ -2,7 +2,7 @@
   "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A council of specialized companions for an AI coding workspace.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": {
@@ -22,12 +22,23 @@
         "title": "Open Council",
         "category": "Pets Council"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Pets Council",
+      "properties": {
+        "petsCouncil.codexBinary": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Optional path to the Codex CLI binary. Falls back to CODEX_BIN, then codex on PATH."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
