@@ -42,10 +42,10 @@ jobs:
           key: code-oss-${{ runner.os }}-${{ hashFiles('config/upstream.json') }}-${{ hashFiles('package.json') }}
 
       - name: Bootstrap patched source tree
-        run: npm run bootstrap
+        run: npm run bootstrap 2>&1 | tee desktop-bootstrap.log
 
       - name: Compile and verify desktop workbench
-        run: npm run desktop:smoke -- ${{ inputs.skip_code_oss_install && '--skip-install' || '' }}
+        run: npm run desktop:smoke -- ${{ inputs.skip_code_oss_install && '--skip-install' || '' }} 2>&1 | tee desktop-compile.log
 
       - name: Publish smoke metadata
         if: always()
@@ -54,9 +54,13 @@ jobs:
           printf 'upstream=' >> desktop-smoke.txt
           cat config/upstream.json >> desktop-smoke.txt
 
-      - name: Upload smoke metadata
+      - name: Upload smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: desktop-smoke-metadata
-          path: desktop-smoke.txt
+          path: |
+            desktop-smoke.txt
+            desktop-bootstrap.log
+            desktop-compile.log
+          if-no-files-found: ignore
