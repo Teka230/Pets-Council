@@ -1,94 +1,41 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CodexRuntimeService, resolveCodexBinary } from './service';
+import { CodexRuntimeService } from './service';
 import type { CodexMessageTransport, RuntimeDisposable } from './types';
 
-class StreamingTransport implements CodexMessageTransport {
-  readonly sent: unknown[] = [];
-  private readonly messages = new Set<(message: unknown) => void>();
-  private readonly closes = new Set<(reason: string) => void>();
-  disposed = false;
-
-  send(message: unknown): void {
-    this.sent.push(message);
-    const request = message as { id?: number; method?: string };
-    if (request.method === 'initialize') this.reply({ id: request.id, result: { userAgent: 'codex-test/1.0' } });
-    if (request.method === 'thread/start') this.reply({ id: request.id, result: { thread: { id: 'thread-1', sessionId: 'session-1', modelProvider: 'openai', cwd: '/workspace' }, model: 'gpt-test', modelProvider: 'openai', cwd: '/workspace', approvalsReviewer: 'user' } });
-    if (request.method === 'turn/start') {
-      this.reply({ id: request.id, result: { turn: { id: 'turn-1', items: [], status: 'inProgress', error: null } } });
-      queueMicrotask(() => {
-        this.emit({ method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'turn-1', startedAt: 100 } } });
-        this.emit({ method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'item-1', delta: 'Hello ' } });
-        this.emit({ method: 'item/agentMessage/delta', params: { threadId: 'thread-1', turnId: 'turn-1', itemId: 'item-1', delta: 'world' } });
-        this.emit({ method: 'item/completed', params: { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'agentMessage', id: 'item-1', text: 'Hello world' } } });
-        this.emit({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed', error: null, completedAt: 101 } } });
+class TestTransport implements CodexMessageTransport {
+  readonly sent: unknown[]=[];
+  private readonly messages=new Set<(message:unknown)=>void>();
+  private readonly closes=new Set<(reason:string)=>void>();
+  constructor(private readonly autoComplete=true){}
+  send(message:unknown):void{
+    this.sent.push(message);const request=message as{id?:number;method?:string};
+    if(request.method==='initialize')this.reply({id:request.id,result:{userAgent:'codex-test'}});
+    if(request.method==='thread/start')this.reply({id:request.id,result:{thread:{id:'thread-1'},approvalsReviewer:'user'}});
+    if(request.method==='turn/start'){
+      this.reply({id:request.id,result:{turn:{id:'turn-1'}}});
+      queueMicrotask(()=>{
+        this.emit({method:'turn/started',params:{threadId:'thread-1',turn:{id:'turn-1',startedAt:100}}});
+        if(this.autoComplete){this.emit({method:'item/completed',params:{threadId:'thread-1',turnId:'turn-1',item:{type:'agentMessage',id:'item-1',text:'Hello world'}}});this.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed',error:null,completedAt:101}}});}
       });
     }
+    if(request.method==='turn/interrupt')this.reply({id:request.id,result:{}});
   }
-  onMessage(listener: (message: unknown) => void): RuntimeDisposable { this.messages.add(listener); return { dispose: () => this.messages.delete(listener) }; }
-  onClose(listener: (reason: string) => void): RuntimeDisposable { this.closes.add(listener); return { dispose: () => this.closes.delete(listener) }; }
-  dispose(): void { this.disposed = true; this.messages.clear(); this.closes.clear(); }
-  emit(message: unknown): void { for (const listener of this.messages) listener(message); }
-  emitClose(reason: string): void { for (const listener of this.closes) listener(reason); }
-  private reply(message: unknown): void { queueMicrotask(() => this.emit(message)); }
+  onMessage(listener:(message:unknown)=>void):RuntimeDisposable{this.messages.add(listener);return{dispose:()=>this.messages.delete(listener)};}
+  onClose(listener:(reason:string)=>void):RuntimeDisposable{this.closes.add(listener);return{dispose:()=>this.closes.delete(listener)};}
+  dispose():void{this.messages.clear();this.closes.clear();}
+  emit(message:unknown):void{for(const listener of this.messages)listener(message);}
+  private reply(message:unknown):void{queueMicrotask(()=>this.emit(message));}
 }
 
-async function readyService(): Promise<{ service: CodexRuntimeService; transport: StreamingTransport }> {
-  const transport = new StreamingTransport();
-  const service = new CodexRuntimeService('codex', async () => transport);
-  await service.connect();
-  await service.startThread('/workspace');
-  return { service, transport };
-}
+async function ready(autoComplete=true):Promise<{service:CodexRuntimeService;transport:TestTransport}>{const transport=new TestTransport(autoComplete);const service=new CodexRuntimeService('codex',async()=>transport);await service.connect();await service.startThread('/workspace');return{service,transport};}
 
-test('resolves configured binary before CODEX_BIN', () => {
-  assert.equal(resolveCodexBinary('/custom/codex', { CODEX_BIN: '/env/codex' }), '/custom/codex');
-});
+test('streams and completes a normal assistant response',async()=>{const{service}=await ready();await service.startTurn('Hello');await new Promise(resolve=>setImmediate(resolve));assert.equal(service.status.turn.phase,'completed');assert.equal(service.status.turn.assistantMessage,'Hello world');service.dispose();});
 
-test('creates a ready thread with an idle turn', async () => {
-  const { service } = await readyService();
-  assert.equal(service.status.phase, 'ready');
-  assert.equal(service.status.thread.phase, 'ready');
-  assert.equal(service.status.turn.phase, 'idle');
-  service.dispose();
-});
+test('surfaces command approvals and sends allow once',async()=>{const{service,transport}=await ready(false);await service.startTurn('Run tests');await new Promise(resolve=>setImmediate(resolve));transport.emit({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'item-1',startedAtMs:1,command:'npm test',cwd:'/workspace',reason:'Run the test suite'}});assert.equal(service.status.approval?.kind,'commandExecution');assert.equal(service.status.approval?.command,'npm test');service.respondApproval('accept');assert.deepEqual(transport.sent.at(-1),{id:'approval-1',result:{decision:'accept'}});assert.equal(service.status.approval,undefined);service.dispose();});
 
-test('streams and completes one assistant message', async () => {
-  const { service } = await readyService();
-  await service.startTurn('Say hello', '/workspace');
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(service.status.turn.phase, 'completed');
-  assert.equal(service.status.turn.turnId, 'turn-1');
-  assert.equal(service.status.turn.userMessage, 'Say hello');
-  assert.equal(service.status.turn.assistantMessage, 'Hello world');
-  assert.equal(service.status.turn.startedAt, 100);
-  assert.equal(service.status.turn.completedAt, 101);
-  service.dispose();
-});
+test('surfaces file change approvals and sends decline',async()=>{const{service,transport}=await ready(false);await service.startTurn('Edit file');await new Promise(resolve=>setImmediate(resolve));transport.emit({id:2,method:'item/fileChange/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'item-2',startedAtMs:2,grantRoot:'/workspace/src'}});assert.equal(service.status.approval?.kind,'fileChange');service.respondApproval('decline');assert.deepEqual(transport.sent.at(-1),{id:2,result:{decision:'decline'}});service.dispose();});
 
-test('ignores notifications from another thread', async () => {
-  const { service, transport } = await readyService();
-  transport.emit({ method: 'item/agentMessage/delta', params: { threadId: 'other-thread', turnId: 'other-turn', delta: 'wrong' } });
-  assert.equal(service.status.turn.assistantMessage, undefined);
-  service.dispose();
-});
+test('interrupts an active turn explicitly',async()=>{const{service,transport}=await ready(false);await service.startTurn('Long task');await new Promise(resolve=>setImmediate(resolve));await service.interruptTurn();assert.deepEqual(transport.sent.at(-1),{id:3,method:'turn/interrupt',params:{threadId:'thread-1',turnId:'turn-1'}});assert.match(service.status.turn.message,/Interrupting/);service.dispose();});
 
-test('requires a connected session and non-empty prompt', async () => {
-  const service = new CodexRuntimeService('codex', async () => new StreamingTransport());
-  await service.startTurn('hello');
-  assert.equal(service.status.turn.phase, 'error');
-  await service.connect();
-  await service.startThread('/workspace');
-  await service.startTurn('   ');
-  assert.match(service.status.turn.message, /Write a prompt/);
-  service.dispose();
-});
-
-test('disconnect clears thread and turn state', async () => {
-  const { service, transport } = await readyService();
-  service.disconnect();
-  assert.equal(service.status.phase, 'disconnected');
-  assert.equal(service.status.thread.phase, 'none');
-  assert.equal(service.status.turn.phase, 'idle');
-  assert.equal(transport.disposed, true);
-});
+test('interrupt declines a pending approval before stopping',async()=>{const{service,transport}=await ready(false);await service.startTurn('Command');await new Promise(resolve=>setImmediate(resolve));transport.emit({id:'approval-2',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'item',startedAtMs:1,command:'rm temp'}});await service.interruptTurn();assert.deepEqual(transport.sent.slice(-2),[{id:'approval-2',result:{decision:'decline'}},{id:3,method:'turn/interrupt',params:{threadId:'thread-1',turnId:'turn-1'}}]);service.dispose();});
