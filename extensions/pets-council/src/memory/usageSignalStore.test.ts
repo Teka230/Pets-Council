@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseUsageSignalLine } from './usageSignalStore';
+import { parseUsageSignalLine } from './usageSignals';
 
 test('parses accepted dismissed and snoozed usage signals',()=>{
   for(const action of ['accepted','dismissed','snoozed'] as const){
@@ -13,5 +13,5 @@ test('parses accepted dismissed and snoozed usage signals',()=>{
 test('rejects malformed or unknown signal lines',()=>{
   assert.equal(parseUsageSignalLine('not json'),undefined);
   assert.equal(parseUsageSignalLine(JSON.stringify({version:2,action:'accepted'})),undefined);
-  assert.equal(parseUsageSignalLine(JSON.stringify({version:1,recordedAt:'now',action:'clicked',turnId:'t',suggestionId:'s',role:'architect',title:'x'})),undefined);
+  assert.equal(parseUsageSignalLine(JSON.stringify({version:1,recordedAt:'now',action:'clicked',turnId:'t',suggestionId:'s',role:'architect',title:'x',provider:'codex'})),undefined);
 });
