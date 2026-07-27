@@ -1,9 +1,6 @@
 name: Desktop smoke
 
 on:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       skip_code_oss_install:
@@ -50,7 +47,7 @@ jobs:
       - name: Publish smoke metadata
         if: always()
         run: |
-          printf 'branch=%s\ncommit=%s\n' "$GITHUB_HEAD_REF" "$GITHUB_SHA" > desktop-smoke.txt
+          printf 'branch=%s\ncommit=%s\n' "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" "$GITHUB_SHA" > desktop-smoke.txt
           printf 'upstream=' >> desktop-smoke.txt
           cat config/upstream.json >> desktop-smoke.txt
 
