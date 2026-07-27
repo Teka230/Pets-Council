@@ -86,6 +86,17 @@ export class CodexAppServerClient {
     return parseThreadStartResult(result);
   }
 
+  async startTurn(threadId: string, text: string, cwd?: string): Promise<string> {
+    const result = await this.request<unknown>('turn/start', {
+      threadId,
+      input: [{ type: 'text', text }],
+      ...(cwd ? { cwd } : {}),
+      approvalsReviewer: 'user'
+    });
+
+    return parseTurnStartResult(result);
+  }
+
   notify(method: string, params?: unknown): void {
     if (this.closed) {
       throw new Error('Codex app-server connection is closed.');
@@ -180,7 +191,7 @@ class BootstrapClient {
       clientInfo: {
         name: 'pets_council',
         title: 'Pets Council',
-        version: '0.5.0'
+        version: '0.6.0'
       },
       capabilities: {}
     }, timeoutMs);
@@ -287,6 +298,20 @@ export function parseThreadStartResult(value: unknown): CodexThreadInfo {
     approvalPolicy: stringLike(response.approvalPolicy),
     approvalsReviewer: stringLike(response.approvalsReviewer)
   };
+}
+
+export function parseTurnStartResult(value: unknown): string {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Codex app-server returned an invalid turn/start result.');
+  }
+
+  const response = value as Record<string, unknown>;
+  if (typeof response.turn !== 'object' || response.turn === null) {
+    throw new Error('Codex app-server turn/start result did not include a turn.');
+  }
+
+  const turn = response.turn as Record<string, unknown>;
+  return requiredString(turn.id, 'turn.id');
 }
 
 function requiredString(value: unknown, label: string): string {
