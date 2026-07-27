@@ -10,10 +10,34 @@ export type CouncilRoleDefinition = Readonly<{
 }>;
 
 export const COUNCIL_ROLES: readonly CouncilRoleDefinition[] = [
-  { id: 'architect', icon: '🏗️', name: 'Architect', purpose: 'Turns the current goal into the next coherent implementation slice.', question: 'What should we build next?' },
-  { id: 'guardian', icon: '🛡️', name: 'Guardian', purpose: 'Surfaces risks, defects, assumptions, and missing tests.', question: 'What could break or be misunderstood?' },
-  { id: 'strategist', icon: '🧭', name: 'Strategist', purpose: 'Clarifies priorities, sequencing, scope, and trade-offs.', question: 'What is the smartest order of operations?' },
-  { id: 'notetaker', icon: '📚', name: 'Notetaker', purpose: 'Preserves decisions, context, and project memory.', question: 'What must not be forgotten?' }
+  {
+    id: 'architect',
+    icon: '🏗️',
+    name: 'Architect',
+    purpose: 'Turns the current goal into the next coherent implementation slice.',
+    question: 'What should we build next?'
+  },
+  {
+    id: 'guardian',
+    icon: '🛡️',
+    name: 'Guardian',
+    purpose: 'Surfaces risks, defects, assumptions, and missing tests.',
+    question: 'What could break or be misunderstood?'
+  },
+  {
+    id: 'strategist',
+    icon: '🧭',
+    name: 'Strategist',
+    purpose: 'Clarifies priorities, sequencing, scope, and trade-offs.',
+    question: 'What is the smartest order of operations?'
+  },
+  {
+    id: 'notetaker',
+    icon: '📚',
+    name: 'Greffier',
+    purpose: 'Preserves decisions, provenance, open questions, and project memory.',
+    question: 'What must become durable context?'
+  }
 ];
 
 export type CouncilCapture = Readonly<{
@@ -29,12 +53,22 @@ export type CouncilRuntimeSource = Readonly<{
   completedAt?: number;
 }>;
 
+export type ProjectContextSlice = Readonly<{
+  summary: string;
+  sources: readonly string[];
+  graphNodeCount: number;
+  graphEdgeCount: number;
+  storagePath?: string;
+  truncated?: boolean;
+}>;
+
 export type CouncilTurn = Readonly<{
   turnId: string;
   userMessage: string;
   assistantResponse: string;
   capture: CouncilCapture;
   runtime?: CouncilRuntimeSource;
+  projectContext?: ProjectContextSlice;
   workspace: Readonly<{
     name?: string;
     activeFile?: string;
@@ -68,3 +102,20 @@ export type CouncilReview = Readonly<{
   turnId: string;
   roles: readonly CouncilRoleReview[];
 }>;
+
+export type CouncilReviewPhase = 'idle' | 'reviewing' | 'ready' | 'fallback' | 'error';
+export type CouncilReviewProvider = 'deterministic' | 'codex';
+
+export type CouncilReviewState = Readonly<{
+  phase: CouncilReviewPhase;
+  provider: CouncilReviewProvider;
+  message: string;
+  turnId?: string;
+}>;
+
+export function emptyCouncilReview(turnId: string): CouncilReview {
+  return {
+    turnId,
+    roles: COUNCIL_ROLE_IDS.map((role) => ({ role, suggestions: [] }))
+  };
+}
