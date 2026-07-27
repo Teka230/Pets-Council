@@ -2,17 +2,30 @@
   "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A Codex workspace with a consultative council of living companions.",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": { "vscode": "^1.100.0" },
   "categories": ["Other"],
-  "activationEvents": ["onCommand:petsCouncil.openCouncil", "onCommand:petsCouncil.openContextGraph"],
+  "activationEvents": [
+    "onCommand:petsCouncil.openCouncil",
+    "onCommand:petsCouncil.openContextGraph",
+    "onCommand:petsCouncil.addOpenQuestion",
+    "onCommand:petsCouncil.resolveOpenQuestion",
+    "onCommand:petsCouncil.queryContextGraph",
+    "onCommand:petsCouncil.supersedeDecision",
+    "onCommand:petsCouncil.openUsageSignals"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       { "command": "petsCouncil.openCouncil", "title": "Open Council", "category": "Pets Council" },
-      { "command": "petsCouncil.openContextGraph", "title": "Open Shared Context Graph", "category": "Pets Council" }
+      { "command": "petsCouncil.openContextGraph", "title": "Open Shared Context Graph", "category": "Pets Council" },
+      { "command": "petsCouncil.addOpenQuestion", "title": "Add Open Question", "category": "Pets Council" },
+      { "command": "petsCouncil.resolveOpenQuestion", "title": "Resolve Open Question", "category": "Pets Council" },
+      { "command": "petsCouncil.queryContextGraph", "title": "Query Shared Context Graph", "category": "Pets Council" },
+      { "command": "petsCouncil.supersedeDecision", "title": "Replace Active Decision", "category": "Pets Council" },
+      { "command": "petsCouncil.openUsageSignals", "title": "Open Local Suggestion Signals", "category": "Pets Council" }
     ],
     "configuration": {
       "title": "Pets Council",
@@ -36,7 +49,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/pets/petPack.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/memory/usageSignalStore.test.js dist/pets/petPack.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
