@@ -32,8 +32,11 @@ jobs:
       - name: Type-check extension
         run: npm run typecheck
 
-      - name: Test council provider
+      - name: Test Council, context graph, and runtime
         run: npm test
 
       - name: Build extension
         run: npm run build
+
+      - name: Verify native overlay sources
+        run: npm run native:verify-source
