@@ -1,17 +1,8 @@
 import * as vscode from 'vscode';
 import type { CouncilSuggestion, CouncilTurn } from '../domain';
+import { parseUsageSignalLine, type SuggestionUsageAction, type SuggestionUsageSignal } from './usageSignals';
 
-export type SuggestionUsageAction='accepted'|'dismissed'|'snoozed';
-export type SuggestionUsageSignal=Readonly<{
-  version:1;
-  recordedAt:string;
-  action:SuggestionUsageAction;
-  turnId:string;
-  suggestionId:string;
-  role:CouncilSuggestion['role'];
-  title:string;
-  provider:'codex'|'deterministic'|'unknown';
-}>;
+export type { SuggestionUsageAction } from './usageSignals';
 
 const encoder=new TextEncoder();
 const decoder=new TextDecoder();
@@ -37,14 +28,6 @@ export class SuggestionUsageSignalStore{
     const document=await vscode.workspace.openTextDocument(location.uri);
     await vscode.window.showTextDocument(document,{preview:false});
   }
-}
-
-export function parseUsageSignalLine(line:string):SuggestionUsageSignal|undefined{
-  try{
-    const value=JSON.parse(line) as Record<string,unknown>;
-    if(value.version!==1||typeof value.recordedAt!=='string'||!['accepted','dismissed','snoozed'].includes(String(value.action))||typeof value.turnId!=='string'||typeof value.suggestionId!=='string'||!['architect','guardian','strategist','notetaker'].includes(String(value.role))||typeof value.title!=='string')return undefined;
-    return value as unknown as SuggestionUsageSignal;
-  }catch{return undefined;}
 }
 
 async function resolveLocation():Promise<{uri:vscode.Uri;displayPath:string}|undefined>{
