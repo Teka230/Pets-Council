@@ -12,6 +12,11 @@ export async function syncExtension() {
     throw new Error('Code - OSS is not bootstrapped yet. Run `npm run bootstrap` first.');
   }
 
+  const builtEntrypoint = path.join(sourceDirectory, 'dist', 'extension.js');
+  if (!(await exists(builtEntrypoint))) {
+    throw new Error('The Pets Council extension is not built. Run `npm run build` before syncing it into Code - OSS.');
+  }
+
   await rm(targetDirectory, { recursive: true, force: true });
   await mkdir(path.dirname(targetDirectory), { recursive: true });
   await cp(sourceDirectory, targetDirectory, {
@@ -19,11 +24,11 @@ export async function syncExtension() {
     filter: (source) => {
       const relativePath = path.relative(sourceDirectory, source);
       const segments = relativePath.split(path.sep);
-      return !segments.includes('node_modules') && !segments.includes('dist');
+      return !segments.includes('node_modules');
     }
   });
 
-  console.log(`Synced Pets Council extension to ${path.relative(repositoryRoot, targetDirectory)}`);
+  console.log(`Synced built Pets Council extension to ${path.relative(repositoryRoot, targetDirectory)}`);
 }
 
 async function exists(candidate) {
