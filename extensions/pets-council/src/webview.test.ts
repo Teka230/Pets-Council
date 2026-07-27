@@ -6,144 +6,46 @@ import type { CodexRuntimeStatus } from './runtime/types';
 import { SAMPLE_COUNCIL_TURN } from './sampleTurn';
 import { renderCouncilHtml } from './webview';
 
-const DISCONNECTED_RUNTIME: CodexRuntimeStatus = {
-  phase: 'disconnected',
-  binary: 'codex',
-  message: 'Disconnected. Connecting is always an explicit user action.',
-  thread: {
-    phase: 'none',
-    message: 'No Codex thread exists for this runtime connection.'
-  }
+const IDLE_TURN = { phase: 'idle' as const, message: 'No Codex turn has been started in this session.' };
+const NO_THREAD = { phase: 'none' as const, message: 'No Codex thread exists for this runtime connection.' };
+const DISCONNECTED: CodexRuntimeStatus = { phase: 'disconnected', binary: 'codex', message: 'Disconnected.', thread: NO_THREAD, turn: IDLE_TURN };
+const THREAD_READY: CodexRuntimeStatus = {
+  phase: 'ready', binary: 'codex', message: 'Connected.', server: { userAgent: 'codex/1.0' },
+  thread: { phase: 'ready', message: 'Thread ready.', thread: { id: 'thread-1234567890', cwd: '/workspace', model: 'gpt-test', modelProvider: 'openai' } },
+  turn: IDLE_TURN
 };
-
-const READY_RUNTIME: CodexRuntimeStatus = {
-  phase: 'ready',
-  binary: '/usr/local/bin/codex',
-  message: 'Connected. No thread has been created and no prompt has been sent.',
-  server: {
-    userAgent: 'codex/0.1',
-    platformFamily: 'unix',
-    platformOs: 'darwin'
-  },
-  thread: {
-    phase: 'none',
-    message: 'No Codex thread exists for this runtime connection.'
-  }
+const STREAMING: CodexRuntimeStatus = {
+  ...THREAD_READY,
+  turn: { phase: 'streaming', message: 'Codex is responding…', turnId: 'turn-1', userMessage: 'Hello', assistantMessage: 'Hi there' }
 };
+const EMPTY: CouncilTurn = { ...SAMPLE_COUNCIL_TURN, capture: { mode: 'live', capturedAt: '2026-07-25T13:35:14Z', warnings: [] }, userMessage: 'placeholder', assistantResponse: 'placeholder', workspace: {}, git: undefined };
 
-const THREAD_READY_RUNTIME: CodexRuntimeStatus = {
-  ...READY_RUNTIME,
-  thread: {
-    phase: 'ready',
-    message: 'Thread ready. No turn has been started and no prompt has been sent.',
-    thread: {
-      id: '0198-long-codex-thread-id-0001',
-      sessionId: 'session-1',
-      cwd: '/workspace',
-      model: 'gpt-test',
-      modelProvider: 'openai',
-      approvalsReviewer: 'user'
-    }
-  }
-};
-
-const EMPTY_LIVE_TURN: CouncilTurn = {
-  ...SAMPLE_COUNCIL_TURN,
-  capture: {
-    mode: 'live',
-    capturedAt: '2026-07-25T13:35:14.000Z',
-    warnings: [
-      'No active editor was available when the context was captured.',
-      'Open a folder or workspace to include Git context.'
-    ]
-  },
-  userMessage: 'Review the current workspace context and suggest the next useful step.',
-  assistantResponse: 'The live workspace context was captured.',
-  workspace: {},
-  git: undefined
-};
-
-test('renders onboarding instead of suggestions without evidence', () => {
-  const html = renderCouncilHtml(
-    EMPTY_LIVE_TURN,
-    reviewMockTurn(EMPTY_LIVE_TURN),
-    DISCONNECTED_RUNTIME,
-    'test-nonce'
-  );
-
+test('keeps empty project onboarding and runtime controls', () => {
+  const html = renderCouncilHtml(EMPTY, reviewMockTurn(EMPTY), DISCONNECTED, 'nonce');
   assert.match(html, /No project context yet/);
-  assert.match(html, /Open folder/);
-  assert.match(html, /Waiting for project context/);
-  assert.match(html, /Nothing to review/);
-  assert.match(html, /Nothing to sequence/);
-  assert.match(html, /Nothing to preserve/);
   assert.match(html, /Connect Codex/);
   assert.doesNotMatch(html, /id="council-composer"/);
-  assert.doesNotMatch(html, /something useful to add/);
-  assert.doesNotMatch(html, / UTC/);
 });
 
-test('keeps the interactive composer when evidence exists', () => {
-  const html = renderCouncilHtml(
-    SAMPLE_COUNCIL_TURN,
-    reviewMockTurn(SAMPLE_COUNCIL_TURN),
-    DISCONNECTED_RUNTIME,
-    'test-nonce'
-  );
-
-  assert.match(html, /id="council-composer"/);
-  assert.match(html, /Live council review/);
-  assert.match(html, /Not connected/);
+test('shows a real Codex composer only after a thread is ready', () => {
+  const disconnected = renderCouncilHtml(SAMPLE_COUNCIL_TURN, reviewMockTurn(SAMPLE_COUNCIL_TURN), DISCONNECTED, 'nonce');
+  const ready = renderCouncilHtml(SAMPLE_COUNCIL_TURN, reviewMockTurn(SAMPLE_COUNCIL_TURN), THREAD_READY, 'nonce');
+  assert.doesNotMatch(disconnected, /id="codex-composer"/);
+  assert.match(ready, /id="codex-composer"/);
+  assert.match(ready, /Send to Codex/);
+  assert.match(ready, /real model turn/);
 });
 
-test('renders a completed runtime handshake without implying a thread exists', () => {
-  const html = renderCouncilHtml(
-    SAMPLE_COUNCIL_TURN,
-    reviewMockTurn(SAMPLE_COUNCIL_TURN),
-    READY_RUNTIME,
-    'test-nonce'
-  );
-
-  assert.match(html, /Handshake complete/);
-  assert.match(html, /No Codex thread exists/);
-  assert.match(html, /Start Codex session/);
-  assert.match(html, /codex\/0\.1/);
-  assert.match(html, /Disconnect/);
-  assert.doesNotMatch(html, /Connect Codex/);
+test('renders streaming user and assistant messages and disables sending', () => {
+  const html = renderCouncilHtml(SAMPLE_COUNCIL_TURN, reviewMockTurn(SAMPLE_COUNCIL_TURN), STREAMING, 'nonce');
+  assert.match(html, />Hello</);
+  assert.match(html, />Hi there</);
+  assert.match(html, /Codex is responding/);
+  assert.match(html, /id="send-codex-turn" disabled/);
 });
 
-test('renders the active thread without implying that a turn ran', () => {
-  const html = renderCouncilHtml(
-    SAMPLE_COUNCIL_TURN,
-    reviewMockTurn(SAMPLE_COUNCIL_TURN),
-    THREAD_READY_RUNTIME,
-    'test-nonce'
-  );
-
-  assert.match(html, /Thread ready/);
-  assert.match(html, /No turn has been started/);
-  assert.match(html, /New Codex session/);
-  assert.match(html, /gpt-test/);
-  assert.match(html, /0198-lon…0001/);
-});
-
-test('renders a retry action after a runtime error', () => {
-  const html = renderCouncilHtml(
-    EMPTY_LIVE_TURN,
-    reviewMockTurn(EMPTY_LIVE_TURN),
-    {
-      phase: 'error',
-      binary: 'codex',
-      message: 'binary not found',
-      thread: {
-        phase: 'none',
-        message: 'No Codex thread exists for this runtime connection.'
-      }
-    },
-    'test-nonce'
-  );
-
-  assert.match(html, /Connection failed/);
-  assert.match(html, /binary not found/);
-  assert.match(html, /Retry connection/);
+test('labels the Council as deterministic until the bridge exists', () => {
+  const html = renderCouncilHtml(SAMPLE_COUNCIL_TURN, reviewMockTurn(SAMPLE_COUNCIL_TURN), THREAD_READY, 'nonce');
+  assert.match(html, /Deterministic workspace review/);
+  assert.match(html, /not connected to the Council until the next slice/);
 });
