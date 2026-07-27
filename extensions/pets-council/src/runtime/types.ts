@@ -7,7 +7,8 @@ export type JsonRpcError = Readonly<{ code: number; message: string; data?: unkn
 export type JsonRpcResponse = Readonly<{ id: JsonRpcId; result?: unknown; error?: JsonRpcError }>;
 
 export type CodexInitializeResult = Readonly<{ userAgent?: string; codexHome?: string; platformFamily?: string; platformOs?: string }>;
-export type CodexThreadInfo = Readonly<{ id: string; sessionId?: string; preview?: string; cwd?: string; model?: string; modelProvider?: string; approvalPolicy?: string; approvalsReviewer?: string }>;
+export type CodexRestoredTurn = Readonly<{ turnId: string; userMessage: string; assistantMessage: string; startedAt?: number; completedAt?: number }>;
+export type CodexThreadInfo = Readonly<{ id: string; sessionId?: string; preview?: string; cwd?: string; model?: string; modelProvider?: string; approvalPolicy?: string; approvalsReviewer?: string; lastCompletedTurn?: CodexRestoredTurn }>;
 export type CodexThreadPhase = 'none' | 'starting' | 'ready' | 'error';
 export type CodexThreadStatus = Readonly<{ phase: CodexThreadPhase; message: string; thread?: CodexThreadInfo }>;
 export type CodexTurnPhase = 'idle' | 'starting' | 'streaming' | 'completed' | 'error';
@@ -15,35 +16,11 @@ export type CodexTurnStatus = Readonly<{ phase: CodexTurnPhase; message: string;
 
 export type CodexApprovalKind = 'commandExecution' | 'fileChange';
 export type CodexApprovalDecision = 'accept' | 'decline';
-export type CodexApprovalRequest = Readonly<{
-  requestId: JsonRpcId;
-  kind: CodexApprovalKind;
-  threadId: string;
-  turnId: string;
-  itemId: string;
-  reason?: string;
-  command?: string;
-  cwd?: string;
-  grantRoot?: string;
-  startedAtMs?: number;
-}>;
+export type CodexApprovalRequest = Readonly<{ requestId: JsonRpcId; kind: CodexApprovalKind; threadId: string; turnId: string; itemId: string; reason?: string; command?: string; cwd?: string; grantRoot?: string; startedAtMs?: number }>;
+export type CodexResumeCandidate = Readonly<{ threadId: string; savedAt: number }>;
 
 export type CodexRuntimePhase = 'disconnected' | 'connecting' | 'ready' | 'error';
-export type CodexRuntimeStatus = Readonly<{
-  phase: CodexRuntimePhase;
-  binary: string;
-  message: string;
-  server?: CodexInitializeResult;
-  thread: CodexThreadStatus;
-  turn: CodexTurnStatus;
-  approval?: CodexApprovalRequest;
-}>;
+export type CodexRuntimeStatus = Readonly<{ phase: CodexRuntimePhase; binary: string; message: string; server?: CodexInitializeResult; thread: CodexThreadStatus; turn: CodexTurnStatus; approval?: CodexApprovalRequest; resumeCandidate?: CodexResumeCandidate }>;
 
-export interface CodexMessageTransport {
-  send(message: unknown): void;
-  onMessage(listener: (message: unknown) => void): RuntimeDisposable;
-  onClose(listener: (reason: string) => void): RuntimeDisposable;
-  dispose(): void;
-}
-
+export interface CodexMessageTransport { send(message: unknown): void; onMessage(listener: (message: unknown) => void): RuntimeDisposable; onClose(listener: (reason: string) => void): RuntimeDisposable; dispose(): void; }
 export type CodexTransportFactory = (binary: string) => Promise<CodexMessageTransport>;
