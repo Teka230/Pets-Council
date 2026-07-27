@@ -105,12 +105,15 @@ function renderRuntimeCard(runtime: CodexRuntimeStatus): string {
       .filter((value): value is string => Boolean(value))
       .join(' · ')
     : '';
-
-  const action = runtime.phase === 'ready'
-    ? '<button class="action secondary" id="disconnect-codex" type="button">Disconnect</button>'
-    : runtime.phase === 'connecting'
-      ? '<button class="action secondary" type="button" disabled>Connecting…</button>'
-      : `<button class="action" id="connect-codex" type="button">${runtime.phase === 'error' ? 'Retry connection' : 'Connect Codex'}</button>`;
+  const thread = runtime.thread.thread;
+  const threadMetadata = thread
+    ? [
+      `Thread ${shortId(thread.id)}`,
+      thread.model,
+      thread.modelProvider,
+      thread.cwd
+    ].filter((value): value is string => Boolean(value)).join(' · ')
+    : '';
 
   return `
     <section class="runtime runtime--${runtime.phase}" aria-label="Codex runtime status">
@@ -118,10 +121,30 @@ function renderRuntimeCard(runtime: CodexRuntimeStatus): string {
         <p class="runtime__eyebrow">Codex runtime</p>
         <p class="runtime__title">${escapeHtml(runtimeLabel(runtime))}</p>
         <p class="runtime__message">${escapeHtml(runtime.message)}</p>
-        <p class="runtime__metadata">Binary: ${escapeHtml(runtime.binary)}${readyMetadata ? ` · ${escapeHtml(readyMetadata)}` : ''}</p>
+        ${runtime.phase === 'ready' ? `<p class="runtime__thread">${escapeHtml(runtime.thread.message)}</p>` : ''}
+        <p class="runtime__metadata">
+          Binary: ${escapeHtml(runtime.binary)}${readyMetadata ? ` · ${escapeHtml(readyMetadata)}` : ''}${threadMetadata ? `<br>${escapeHtml(threadMetadata)}` : ''}
+        </p>
       </div>
-      <div class="runtime__action">${action}</div>
+      <div class="runtime__actions">${renderRuntimeActions(runtime)}</div>
     </section>`;
+}
+
+function renderRuntimeActions(runtime: CodexRuntimeStatus): string {
+  if (runtime.phase === 'connecting') {
+    return '<button class="action secondary" type="button" disabled>Connecting…</button>';
+  }
+
+  if (runtime.phase !== 'ready') {
+    return `<button class="action" id="connect-codex" type="button">${runtime.phase === 'error' ? 'Retry connection' : 'Connect Codex'}</button>`;
+  }
+
+  const startLabel = runtime.thread.phase === 'ready' ? 'New Codex session' : 'Start Codex session';
+  const startButton = runtime.thread.phase === 'starting'
+    ? '<button class="action" type="button" disabled>Starting session…</button>'
+    : `<button class="action" id="start-codex-thread" type="button">${startLabel}</button>`;
+
+  return `${startButton}<button class="action secondary" id="disconnect-codex" type="button">Disconnect</button>`;
 }
 
 function runtimeLabel(runtime: CodexRuntimeStatus): string {
@@ -129,7 +152,7 @@ function runtimeLabel(runtime: CodexRuntimeStatus): string {
     case 'connecting':
       return 'Connecting to app-server';
     case 'ready':
-      return 'Handshake complete';
+      return runtime.thread.phase === 'ready' ? 'Thread ready' : 'Handshake complete';
     case 'error':
       return 'Connection failed';
     default:
@@ -178,16 +201,17 @@ function styles(): string {
     .warnings ul { margin: 10px 0 0; padding-left: 20px; }
     .warnings li { margin: 5px 0; color: var(--vscode-descriptionForeground); }
     .empty-state { margin-bottom: 16px; padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 18px; background: var(--vscode-sideBar-background); }
-    .button-row, .composer__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .button-row, .composer__actions, .runtime__actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .empty-note { margin: 16px 0 0; }
     .runtime { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 22px; padding: 16px; border: 1px solid var(--vscode-panel-border); border-radius: 14px; background: var(--vscode-editorWidget-background); }
     .runtime--ready { border-color: var(--vscode-testing-iconPassed, var(--vscode-focusBorder)); }
     .runtime--error { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); }
     .runtime__eyebrow { margin: 0 0 4px; color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
     .runtime__title { margin: 0; font-weight: 700; }
-    .runtime__message { margin: 5px 0 0; color: var(--vscode-descriptionForeground); line-height: 1.45; }
-    .runtime__metadata { margin: 7px 0 0; color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; }
-    .runtime__action { flex: 0 0 auto; }
+    .runtime__message, .runtime__thread { margin: 5px 0 0; color: var(--vscode-descriptionForeground); line-height: 1.45; }
+    .runtime__thread { color: var(--vscode-foreground); }
+    .runtime__metadata { margin: 7px 0 0; color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; line-height: 1.5; }
+    .runtime__actions { flex: 0 0 auto; justify-content: flex-end; }
     .roles { display: grid; gap: 14px; }
     .role { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid var(--vscode-panel-border); border-radius: 16px; background: var(--vscode-sideBar-background); }
     .role--silent { opacity: .72; }
@@ -211,7 +235,7 @@ function styles(): string {
     textarea:focus, button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
     .composer__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
     .status { margin: 0; color: var(--vscode-descriptionForeground); font-size: 12px; }
-    @media (max-width: 620px) { body { padding: 16px; } .header-row, .runtime { display: block; } .header-row > button, .runtime__action { margin-top: 14px; } .role { grid-template-columns: 1fr; } }
+    @media (max-width: 620px) { body { padding: 16px; } .header-row, .runtime { display: block; } .header-row > button, .runtime__actions { margin-top: 14px; justify-content: flex-start; } .role { grid-template-columns: 1fr; } }
   `;
 }
 
@@ -401,6 +425,10 @@ function renderRuntimeScript(): string {
     if (disconnectCodex) {
       disconnectCodex.addEventListener('click', () => vscode.postMessage({ type: 'disconnectCodex' }));
     }
+    const startCodexThread = document.getElementById('start-codex-thread');
+    if (startCodexThread) {
+      startCodexThread.addEventListener('click', () => vscode.postMessage({ type: 'startCodexThread' }));
+    }
   `;
 }
 
@@ -423,6 +451,10 @@ export function formatCapturedAt(value: string): string {
     minute: '2-digit',
     second: '2-digit'
   }).format(date);
+}
+
+function shortId(value: string): string {
+  return value.length <= 12 ? value : `${value.slice(0, 8)}…${value.slice(-4)}`;
 }
 
 function pluralize(count: number, singular: string): string {
