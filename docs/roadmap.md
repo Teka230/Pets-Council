@@ -60,6 +60,7 @@
 - [x] Add a reproducible full Code - OSS compile smoke command
 - [x] Add a manual heavyweight desktop smoke workflow
 - [x] Sync the compiled integrated extension into Code - OSS
+- [x] Bootstrap, patch, and fully compile the pinned Code - OSS workbench on Linux CI
 - [ ] Run and capture the interactive desktop smoke on macOS, Windows, and Linux
 
 ## Milestone 7 — Local product signals
