@@ -1,22 +1,6 @@
 {
-  "name": "pets-council",
-  "displayName": "Pets Council",
-  "description": "A council of specialized companions for an AI coding workspace.",
-  "version": "0.7.0",
-  "publisher": "teka230",
-  "license": "MIT",
-  "engines": { "vscode": "^1.100.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onCommand:petsCouncil.openCouncil"],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [{ "command": "petsCouncil.openCouncil", "title": "Open Council", "category": "Pets Council" }],
-    "configuration": { "title": "Pets Council", "properties": { "petsCouncil.codexBinary": { "type": "string", "default": "", "scope": "machine", "description": "Optional path to the Codex CLI binary. Falls back to CODEX_BIN, then codex on PATH." } } }
-  },
-  "scripts": {
-    "build": "tsc -p .",
-    "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js"
-  },
-  "devDependencies": { "@types/node": "^22.10.0", "@types/vscode": "^1.100.0", "typescript": "^5.9.2" }
+  "name":"pets-council","displayName":"Pets Council","description":"A council of specialized companions for an AI coding workspace.","version":"0.8.0","publisher":"teka230","license":"MIT","engines":{"vscode":"^1.100.0"},"categories":["Other"],"activationEvents":["onCommand:petsCouncil.openCouncil"],"main":"./dist/extension.js",
+  "contributes":{"commands":[{"command":"petsCouncil.openCouncil","title":"Open Council","category":"Pets Council"}],"configuration":{"title":"Pets Council","properties":{"petsCouncil.codexBinary":{"type":"string","default":"","scope":"machine","description":"Optional path to the Codex CLI binary. Falls back to CODEX_BIN, then codex on PATH."}}}},
+  "scripts":{"build":"tsc -p .","typecheck":"tsc -p . --noEmit","test":"npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js"},
+  "devDependencies":{"@types/node":"^22.10.0","@types/vscode":"^1.100.0","typescript":"^5.9.2"}
 }
