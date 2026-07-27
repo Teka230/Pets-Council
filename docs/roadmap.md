@@ -14,9 +14,10 @@
 - [x] Launch `codex app-server` over JSONL stdio and complete initialization
 - [x] Create workspace-scoped threads with user approval routing
 - [x] Start and stream explicit text turns
-- [x] Convert a completed Codex exchange into the shared `CouncilTurn`
-- [x] Review the real question and answer with captured project context
-- [ ] Map approval requests and interruption
+- [x] Convert completed Codex exchanges into shared Council turns
+- [x] Surface command and file-change approval requests
+- [x] Require explicit Allow once or Deny decisions
+- [x] Interrupt active turns explicitly
 - [ ] Persist and resume threads
 
 ## Milestone 3 — Actionable suggestions
