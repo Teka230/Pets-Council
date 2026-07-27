@@ -18,7 +18,8 @@
 - [x] Surface command and file-change approval requests
 - [x] Require explicit Allow once or Deny decisions
 - [x] Interrupt active turns explicitly
-- [ ] Persist and resume threads
+- [x] Persist thread identifiers per workspace
+- [x] Explicitly resume saved threads and restore the last completed text exchange
 
 ## Milestone 3 — Actionable suggestions
 
