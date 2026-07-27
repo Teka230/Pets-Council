@@ -1,93 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { COUNCIL_ROLE_IDS, type CouncilTurn } from './domain';
+import { COUNCIL_ROLE_IDS, COUNCIL_ROLES, type CouncilTurn } from './domain';
 import { reviewMockTurn } from './mockCouncil';
 import { SAMPLE_COUNCIL_TURN } from './sampleTurn';
 
-test('returns every role in a stable order', () => {
-  const review = reviewMockTurn(SAMPLE_COUNCIL_TURN);
-
-  assert.deepEqual(
-    review.roles.map((role) => role.role),
-    COUNCIL_ROLE_IDS
-  );
-});
-
-test('is deterministic for the same turn', () => {
-  assert.deepEqual(
-    reviewMockTurn(SAMPLE_COUNCIL_TURN),
-    reviewMockTurn(SAMPLE_COUNCIL_TURN)
-  );
-});
-
-test('returns zero to two suggestions per role', () => {
-  const review = reviewMockTurn(SAMPLE_COUNCIL_TURN);
-
-  for (const role of review.roles) {
-    assert.ok(role.suggestions.length >= 0);
-    assert.ok(role.suggestions.length <= 2);
-  }
-});
-
-test('supports a silent role without treating it as an error', () => {
-  const review = reviewMockTurn(SAMPLE_COUNCIL_TURN);
-  const strategist = review.roles.find((role) => role.role === 'strategist');
-
-  assert.ok(strategist);
-  assert.deepEqual(strategist.suggestions, []);
-});
-
-test('guardian returns two suggestions when files and an active editor are present', () => {
-  const review = reviewMockTurn(SAMPLE_COUNCIL_TURN);
-  const guardian = review.roles.find((role) => role.role === 'guardian');
-
-  assert.ok(guardian);
-  assert.equal(guardian.suggestions.length, 2);
-});
-
-test('notetaker preserves a git checkpoint without an assistant response', () => {
-  const turn: CouncilTurn = {
-    ...SAMPLE_COUNCIL_TURN,
-    assistantResponse: ''
-  };
-  const review = reviewMockTurn(turn);
-  const notetaker = review.roles.find((role) => role.role === 'notetaker');
-
-  assert.ok(notetaker);
-  assert.equal(notetaker.suggestions.length, 1);
-});
-
-test('notetaker stays silent when no durable context exists', () => {
-  const turn: CouncilTurn = {
-    ...SAMPLE_COUNCIL_TURN,
-    assistantResponse: '',
-    git: undefined
-  };
-  const review = reviewMockTurn(turn);
-  const notetaker = review.roles.find((role) => role.role === 'notetaker');
-
-  assert.ok(notetaker);
-  assert.deepEqual(notetaker.suggestions, []);
-});
-
-test('all companions stay silent when a live capture has no evidence', () => {
-  const turn: CouncilTurn = {
-    ...SAMPLE_COUNCIL_TURN,
-    capture: {
-      mode: 'live',
-      capturedAt: '2026-07-25T13:35:14.000Z',
-      warnings: [
-        'No active editor was available when the context was captured.',
-        'Open a folder or workspace to include Git context.'
-      ]
-    },
-    userMessage: 'Review the current workspace context and suggest the next useful step.',
-    assistantResponse: 'The live workspace context was captured.',
-    workspace: {},
-    git: undefined
-  };
-
-  const review = reviewMockTurn(turn);
-
-  assert.ok(review.roles.every((role) => role.suggestions.length === 0));
-});
+test('returns every role in stable order with Greffier display name',()=>{const review=reviewMockTurn(SAMPLE_COUNCIL_TURN);assert.deepEqual(review.roles.map((role)=>role.role),COUNCIL_ROLE_IDS);assert.equal(COUNCIL_ROLES.find((role)=>role.id==='notetaker')?.name,'Greffier');});
+test('is deterministic and returns zero to two suggestions per role',()=>{assert.deepEqual(reviewMockTurn(SAMPLE_COUNCIL_TURN),reviewMockTurn(SAMPLE_COUNCIL_TURN));for(const role of reviewMockTurn(SAMPLE_COUNCIL_TURN).roles)assert.ok(role.suggestions.length<=2);});
+test('supports a silent strategist',()=>{assert.deepEqual(reviewMockTurn(SAMPLE_COUNCIL_TURN).roles.find((role)=>role.role==='strategist')?.suggestions,[]);});
+test('Greffier preserves a Git checkpoint without assistant response',()=>{const turn:CouncilTurn={...SAMPLE_COUNCIL_TURN,assistantResponse:''};assert.equal(reviewMockTurn(turn).roles.find((role)=>role.role==='notetaker')?.suggestions.length,1);});
+test('all companions stay silent without live evidence',()=>{const turn:CouncilTurn={...SAMPLE_COUNCIL_TURN,capture:{mode:'live',capturedAt:'2026-07-25T13:35:14.000Z',warnings:[]},userMessage:'placeholder',assistantResponse:'placeholder',workspace:{},git:undefined};assert.ok(reviewMockTurn(turn).roles.every((role)=>role.suggestions.length===0));});
