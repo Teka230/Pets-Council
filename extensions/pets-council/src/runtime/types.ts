@@ -34,6 +34,25 @@ export type CodexInitializeResult = Readonly<{
   platformOs?: string;
 }>;
 
+export type CodexThreadInfo = Readonly<{
+  id: string;
+  sessionId?: string;
+  preview?: string;
+  cwd?: string;
+  model?: string;
+  modelProvider?: string;
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+}>;
+
+export type CodexThreadPhase = 'none' | 'starting' | 'ready' | 'error';
+
+export type CodexThreadStatus = Readonly<{
+  phase: CodexThreadPhase;
+  message: string;
+  thread?: CodexThreadInfo;
+}>;
+
 export type CodexRuntimePhase = 'disconnected' | 'connecting' | 'ready' | 'error';
 
 export type CodexRuntimeStatus = Readonly<{
@@ -41,6 +60,7 @@ export type CodexRuntimeStatus = Readonly<{
   binary: string;
   message: string;
   server?: CodexInitializeResult;
+  thread: CodexThreadStatus;
 }>;
 
 export interface CodexMessageTransport {
