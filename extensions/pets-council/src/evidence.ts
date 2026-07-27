@@ -10,11 +10,9 @@ export type CouncilEvidence = Readonly<{
 }>;
 
 export function inspectCouncilEvidence(turn: CouncilTurn): CouncilEvidence {
-  const hasConversation = turn.capture.mode === 'sample'
-    && Boolean(turn.userMessage.trim() || turn.assistantResponse.trim());
-
+  const trustedConversation = turn.capture.mode === 'sample' || turn.runtime?.source === 'codex';
   return {
-    hasConversation,
+    hasConversation: trustedConversation && Boolean(turn.userMessage.trim() || turn.assistantResponse.trim()),
     hasActiveFile: Boolean(turn.workspace.activeFile),
     hasSelection: Boolean(turn.workspace.selectedText?.trim()),
     hasGitBranch: Boolean(turn.git?.branch),
