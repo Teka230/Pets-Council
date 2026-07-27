@@ -11,70 +11,50 @@
 
 ## Milestone 1 — Shared council context
 
-- [x] Define `CouncilTurn` and `CouncilSuggestion` contracts
-- [x] Capture the active editor, explicit selection, workspace, and Git summary
-- [x] Bound and surface context truncation
-- [x] Add a useful-evidence gate
-- [x] Keep every role silent when live context has no concrete signal
-- [x] Add a dedicated onboarding state with folder picker and refresh
-- [x] Hide the prompt composer when no suggestion exists
-- [x] Add a mock council provider for deterministic development
-- [x] Render zero to two suggestions per role
-- [x] Add unit tests for role limits, empty responses, evidence, rendering, and context parsing
+- [x] Define Council contracts and bounded workspace/Git context
+- [x] Add an evidence gate, quiet onboarding, and deterministic provider
+- [x] Render zero to two explicit suggestions per role
 
 ## Milestone 2 — Codex runtime adapter
 
-- [x] Resolve and launch `codex app-server` over stdio
-- [x] Add JSONL framing and a typed transport boundary
-- [x] Complete the `initialize` then `initialized` handshake
-- [x] Keep connection lifecycle behind a typed adapter
-- [x] Show disconnected, connecting, ready, and error states in the UI
-- [x] Add explicit connect, disconnect, retry, and binary configuration
-- [x] Add launch, protocol, timeout, and unexpected-exit tests
-- [x] Create a workspace-scoped thread with explicit user approval routing
-- [x] Show active thread identity and lifecycle in the UI
-- [ ] Resume persisted threads
-- [ ] Map turns, streaming items, and completion events
-- [ ] Map approval requests and explicit responses
-- [ ] Replace placeholder conversation content with the real completed turn
+- [x] Launch `codex app-server` over JSONL stdio
+- [x] Complete initialization and expose connection lifecycle
+- [x] Create workspace-scoped threads with user approval routing
+- [x] Start explicit text turns
+- [x] Stream agent message deltas and finalize completed turns
+- [x] Show the primary Codex conversation separately from the Council
+- [ ] Feed the real completed turn into the Council
+- [ ] Map approval requests and interruption
+- [ ] Persist and resume threads
 
 ## Milestone 3 — Actionable suggestions
 
-- [x] Insert a selected suggestion into a local composer
-- [x] Preserve the originating role and rationale in the review
+- [x] Prepare, edit, and copy a Council suggestion locally
+- [x] Prevent automatic execution
 - [ ] Insert a selected suggestion into the real Codex composer
 - [ ] Add dismiss, snooze, and save-to-notes actions
-- [x] Prevent automatic execution
-- [ ] Measure whether suggestions are used or ignored locally
 
 ## Milestone 4 — Project memory
 
-- [ ] Add project-scoped notes
-- [ ] Track accepted decisions
+- [ ] Add project-scoped notes and accepted decisions
 - [ ] Import roadmap and Fil Rouge context when available
-- [ ] Build compact context summaries
 - [ ] Keep storage local and inspectable
 
 ## Milestone 5 — Living companions
 
-- [ ] Define the Pet Pack manifest
-- [ ] Separate visual pets from council roles
+- [ ] Define Pet Pack manifests and role assignments
 - [ ] Add idle, attention, thinking, and suggestion states
-- [ ] Prototype pets inside supported webview surfaces
-- [ ] Validate accessibility and reduced-motion behavior
+- [ ] Validate accessibility and reduced motion
 
 ## Milestone 6 — Minimal native layer
 
-- [ ] Prototype a global pet overlay in the Code - OSS workbench
-- [ ] Bridge selected native events to the integrated extension
-- [ ] Document every upstream patch
-- [ ] Add patch application and verification scripts
-- [ ] Test rebasing onto the next Code - OSS release
+- [ ] Prototype the global pet overlay
+- [ ] Document and test every upstream patch
 
 ## Not planned for the early project
 
 - autonomous multi-agent delegation;
 - silent workspace modification;
-- a proprietary extension marketplace;
-- a large permanent divergence from Code - OSS;
-- bundling private credentials or model access.
+- proprietary marketplace infrastructure;
+- large permanent divergence from Code - OSS;
+- bundled private credentials.
