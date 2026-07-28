@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { CodexCouncilProvider, DeterministicCouncilProvider, emptyReviewForState, idleCouncilState, reviewingCouncilState } from './council/provider';
+import { findCouncilTimelineSuggestion, upsertCouncilTurnReview, type CouncilTurnReviewEntry } from './council/reviewTimeline';
 import type { CouncilReview, CouncilReviewState, CouncilSuggestion, CouncilTurn } from './domain';
 import { SharedContextGraphStore } from './memory/contextGraphStore';
 import { SuggestionUsageSignalStore, type SuggestionUsageAction } from './memory/usageSignalStore';
@@ -54,20 +55,26 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
   const deterministic=new DeterministicCouncilProvider(),intelligent=new CodexCouncilProvider(runtime,deterministic);
   let disposed=false,renderSequence=0,reviewSequence=0,currentTurn:CouncilTurn|undefined,currentReview:CouncilReview|undefined,councilState:CouncilReviewState=idleCouncilState(),lastBridgedTurnId:string|undefined;
   let conversationHistory:ConversationHistoryState={turns:[]};
+  let reviewTimeline:readonly CouncilTurnReviewEntry[]=[];
 
   const syncConversation=():void=>{conversationHistory=projectConversationHistory(conversationHistory,runtime.status);};
   const renderCurrent=():void=>{
     if(disposed||!currentTurn||!currentReview)return;
     syncConversation();
     const pets=buildPetSnapshots(currentReview,councilState,runtime.status);
-    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,conversationHistory.turns,readPetMotionPreference(),createNonce());
+    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,conversationHistory.turns,reviewTimeline,readPetMotionPreference(),createNonce());
     void nativeOverlay.publish({visible:true,companions:pets});
   };
   const reviewCompletedTurn=async(turn:CouncilTurn):Promise<void>=>{
-    const sequence=++reviewSequence;currentReview=emptyReviewForState(turn.turnId);councilState=reviewingCouncilState(turn.turnId);renderCurrent();
+    const sequence=++reviewSequence;
+    currentReview=emptyReviewForState(turn.turnId);councilState=reviewingCouncilState(turn.turnId);
+    reviewTimeline=upsertCouncilTurnReview(reviewTimeline,{turn,review:currentReview,state:councilState});
+    renderCurrent();
     const outcome=await intelligent.review(turn,currentWorkspaceDirectory());
     if(disposed||sequence!==reviewSequence||currentTurn?.turnId!==turn.turnId)return;
-    currentReview=outcome.review;councilState=outcome.state;renderCurrent();
+    currentReview=outcome.review;councilState=outcome.state;
+    reviewTimeline=upsertCouncilTurnReview(reviewTimeline,{turn,review:outcome.review,state:outcome.state});
+    renderCurrent();
   };
   const bridgeCompletedTurn=():boolean=>{
     if(!currentTurn)return false;const bridged=buildCouncilTurnFromCompletedCodexTurn(currentTurn,runtime.status);
@@ -80,13 +87,18 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
     if(disposed||sequence!==renderSequence)return;
     currentTurn={...captured,projectContext:actorContexts.codex,actorContexts};const outcome=await deterministic.review(currentTurn);currentReview=outcome.review;councilState=outcome.state;if(!bridgeCompletedTurn())renderCurrent();
   };
+  const resolveSuggestion=(suggestionId:string):{turn:CouncilTurn;suggestion:CouncilSuggestion;provider:CouncilReviewState['provider']}|undefined=>{
+    const historical=findCouncilTimelineSuggestion(reviewTimeline,suggestionId);
+    if(historical)return{turn:historical.entry.turn,suggestion:historical.suggestion,provider:historical.entry.state.provider};
+    if(!currentTurn||!currentReview)return undefined;const suggestion=findSuggestion(currentReview,suggestionId);return suggestion?{turn:currentTurn,suggestion,provider:councilState.provider}:undefined;
+  };
   const saveSuggestion=async(suggestionId:string):Promise<void>=>{
-    if(!currentTurn||!currentReview)return;const suggestion=findSuggestion(currentReview,suggestionId);if(!suggestion)return;
-    try{const projectContext=await graphStore.recordSuggestion(currentTurn,suggestion);currentTurn={...currentTurn,projectContext};councilState={...councilState,message:`Saved “${suggestion.title}” to the Shared Context Graph.`};renderCurrent();void vscode.window.showInformationMessage(`Council proposal saved to ${projectContext.storagePath??'the Shared Context Graph'}.`);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
+    const resolved=resolveSuggestion(suggestionId);if(!resolved)return;
+    try{const projectContext=await graphStore.recordSuggestion(resolved.turn,resolved.suggestion);if(currentTurn?.turnId===resolved.turn.turnId)currentTurn={...currentTurn,projectContext};councilState={...councilState,message:`Saved “${resolved.suggestion.title}” to the Shared Context Graph.`};renderCurrent();void vscode.window.showInformationMessage(`Council proposal saved to ${projectContext.storagePath??'the Shared Context Graph'}.`);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
   };
   const recordUsage=async(suggestionId:string,action:SuggestionUsageAction):Promise<void>=>{
-    if(!currentTurn||!currentReview)return;const suggestion=findSuggestion(currentReview,suggestionId);if(!suggestion)return;
-    try{await usageStore.record(currentTurn,suggestion,action,councilState.provider);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
+    const resolved=resolveSuggestion(suggestionId);if(!resolved)return;
+    try{await usageStore.record(resolved.turn,resolved.suggestion,action,resolved.provider);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
   };
 
   const runtimeSubscription=runtime.onDidChange(()=>{syncConversation();if(!bridgeCompletedTurn())renderCurrent();});
