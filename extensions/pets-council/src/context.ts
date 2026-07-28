@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 export const MAX_SELECTION_CHARS = 2_000;
 export const MAX_DIFF_SUMMARY_CHARS = 2_000;
 export const MAX_CHANGED_FILES = 50;
@@ -34,7 +36,8 @@ export function truncateText(value: string, maxChars: number): TruncatedText {
 
 export function parseGitStatus(
   output: string,
-  maxFiles = MAX_CHANGED_FILES
+  maxFiles = MAX_CHANGED_FILES,
+  pathPrefix?: string
 ): ParsedGitStatus {
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
     throw new Error('maxFiles must be a positive integer.');
@@ -42,6 +45,7 @@ export function parseGitStatus(
 
   const tokens = output.split('\0');
   const files = new Set<string>();
+  const normalizedPrefix = normalizePathPrefix(pathPrefix);
 
   for (let index = 0; index < tokens.length; index += 1) {
     const entry = tokens[index];
@@ -50,7 +54,7 @@ export function parseGitStatus(
     }
 
     const status = entry.slice(0, 2);
-    const candidate = normalizeRepositoryPath(entry.slice(3));
+    const candidate = scopeRepositoryPath(normalizeRepositoryPath(entry.slice(3)), normalizedPrefix);
     if (candidate) {
       files.add(candidate);
     }
@@ -65,6 +69,14 @@ export function parseGitStatus(
     changedFiles: changedFiles.slice(0, maxFiles),
     truncated: changedFiles.length > maxFiles
   };
+}
+
+export function workspaceGitPathPrefix(toplevel: string, workspaceFolder: string): string | undefined {
+  const relative = normalizeRepositoryPath(path.relative(toplevel, workspaceFolder));
+  if (!relative || relative === '.' || relative.startsWith('../')) {
+    return undefined;
+  }
+  return `${relative}/`;
 }
 
 export function buildDiffSummary(
@@ -85,6 +97,27 @@ export function buildDiffSummary(
   }
 
   return truncateText(sections.join('\n\n'), maxChars);
+}
+
+function scopeRepositoryPath(value: string, pathPrefix: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (!pathPrefix) {
+    return value;
+  }
+  if (!value.startsWith(pathPrefix)) {
+    return undefined;
+  }
+  return value.slice(pathPrefix.length) || undefined;
+}
+
+function normalizePathPrefix(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = normalizeRepositoryPath(value);
+  return normalized.endsWith('/') ? normalized : `${normalized}/`;
 }
 
 function normalizeRepositoryPath(value: string): string {

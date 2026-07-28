@@ -99,6 +99,22 @@ export class SharedContextGraphStore {
     await vscode.window.showTextDocument(document, { preview: false });
   }
 
+  async clear(): Promise<void> {
+    const location = await requireGraphLocation();
+    if (!(await exists(location.uri))) {
+      void vscode.window.showInformationMessage('There is no Shared Context Graph to clear in this workspace.');
+      return;
+    }
+    const confirmation = await vscode.window.showWarningMessage(
+      `Clear the Shared Context Graph for this workspace?\n${location.displayPath}\n\nThis removes local proposals, decisions, and questions for the open project only.`,
+      { modal: true },
+      'Clear graph'
+    );
+    if (confirmation !== 'Clear graph') return;
+    await writeGraph(location.uri, emptyContextGraph());
+    void vscode.window.showInformationMessage(`Cleared ${location.displayPath}.`);
+  }
+
   private async openAtNode(nodeId:string):Promise<void>{
     const location=await requireGraphLocation();
     if(!(await exists(location.uri)))return;

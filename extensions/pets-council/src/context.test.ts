@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDiffSummary, parseGitStatus, truncateText } from './context';
+import { buildDiffSummary, parseGitStatus, truncateText, workspaceGitPathPrefix } from './context';
 
 test('truncates selected text at the configured boundary', () => {
   assert.deepEqual(truncateText('abcdef', 4), {
@@ -53,9 +53,20 @@ test('limits the changed-file list', () => {
   assert.equal(result.truncated, true);
 });
 
+test('scopes nested-workspace git paths to the open folder', () => {
+  assert.equal(workspaceGitPathPrefix('/Users/teka/TKProjets', '/Users/teka/TKProjets/Games/Pets-run'), 'Games/Pets-run/');
+  const result = parseGitStatus([
+    ' M Games/Pets-run/src/main.ts',
+    ' M CodingExtensions/other/file.ts',
+    '?? Games/Pets-run/brief.md',
+    ''
+  ].join('\0'), 50, 'Games/Pets-run/');
+  assert.deepEqual(result.changedFiles, ['src/main.ts', 'brief.md']);
+});
+
 test('labels staged and unstaged diff summaries', () => {
   const result = buildDiffSummary(
-    ' extension.ts | 12 ++++++------',
+    ' extension.ts | 12 +++++++------',
     ' domain.ts | 4 ++++',
     200
   );
@@ -63,6 +74,6 @@ test('labels staged and unstaged diff summaries', () => {
   assert.equal(result.truncated, false);
   assert.equal(
     result.value,
-    'Working tree:\nextension.ts | 12 ++++++------\n\nStaged:\ndomain.ts | 4 ++++'
+    'Working tree:\nextension.ts | 12 +++++++------\n\nStaged:\ndomain.ts | 4 ++++'
   );
 });

@@ -5,8 +5,10 @@ import * as vscode from 'vscode';
 import {
   buildDiffSummary,
   MAX_SELECTION_CHARS,
+  MAX_CHANGED_FILES,
   parseGitStatus,
-  truncateText
+  truncateText,
+  workspaceGitPathPrefix
 } from './context';
 import type { CouncilTurn } from './domain';
 
@@ -86,22 +88,29 @@ async function captureGitContext(
     return undefined;
   }
 
+  let toplevel: string;
   try {
-    await runGit(['rev-parse', '--show-toplevel'], workingDirectory);
+    toplevel = (await runGit(['rev-parse', '--show-toplevel'], workingDirectory)).trim();
   } catch {
     warnings.push('Git context is unavailable for the current workspace.');
     return undefined;
   }
 
+  const pathPrefix = workspaceGitPathPrefix(toplevel, workingDirectory);
+  const pathspec = pathPrefix ? ['.'] : [];
+  if (pathPrefix) {
+    warnings.push('Git context was scoped to the open workspace folder inside a larger repository.');
+  }
+
   const [branchOutput, shortCommit, statusOutput, unstagedDiff, stagedDiff] = await Promise.all([
     safeRunGit(['branch', '--show-current'], workingDirectory),
     safeRunGit(['rev-parse', '--short', 'HEAD'], workingDirectory),
-    safeRunGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], workingDirectory),
-    safeRunGit(['diff', '--stat=80,20', '--compact-summary'], workingDirectory),
-    safeRunGit(['diff', '--cached', '--stat=80,20', '--compact-summary'], workingDirectory)
+    safeRunGit(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...pathspec], workingDirectory),
+    safeRunGit(['diff', '--stat=80,20', '--compact-summary', '--', ...pathspec], workingDirectory),
+    safeRunGit(['diff', '--cached', '--stat=80,20', '--compact-summary', '--', ...pathspec], workingDirectory)
   ]);
 
-  const parsedStatus = parseGitStatus(statusOutput);
+  const parsedStatus = parseGitStatus(statusOutput, MAX_CHANGED_FILES, pathPrefix);
   const diffSummary = buildDiffSummary(unstagedDiff, stagedDiff);
 
   if (parsedStatus.truncated) {
