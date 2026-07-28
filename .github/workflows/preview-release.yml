@@ -1,0 +1,41 @@
+name: Desktop Preview packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-14
+            target: darwin-x64
+          - os: windows-latest
+            target: win32-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Pets Council dependencies
+        run: npm install
+      - name: Bootstrap pinned Code - OSS
+        run: npm run bootstrap
+      - name: Build unsigned preview archive
+        run: npm run package:preview -- --target ${{ matrix.target }}
+      - name: Upload preview archive and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: pets-council-preview-${{ matrix.target }}
+          path: artifacts/*${{ matrix.target }}*
+          if-no-files-found: error
