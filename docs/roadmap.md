@@ -18,6 +18,7 @@
 - [x] Stream primary turns
 - [x] Surface approvals and interruption
 - [x] Bridge completed turns into the Council
+- [x] Expose the Codex model catalog and reasoning-effort selector
 
 ## Milestone 3 — Complete consultative loop
 
@@ -50,6 +51,8 @@
 - [x] Add atlas-backed sprite rendering with glyph fallback
 - [x] Validate strip v1 and Hatch runtime v2 atlas contracts
 - [x] Anchor companions near editor, terminal, sidebar, and project memory
+- [x] Install self-contained external Pet Packs per workspace
+- [x] Restore the built-in Pet Pack explicitly
 
 ## Milestone 6 — Native Code - OSS layer
 
@@ -61,6 +64,7 @@
 - [x] Add a manual heavyweight desktop smoke workflow
 - [x] Sync the compiled integrated extension into Code - OSS
 - [x] Bootstrap, patch, and fully compile the pinned Code - OSS workbench on Linux CI
+- [x] Add a one-time explicit Pets Council product layout
 - [ ] Run and capture the interactive desktop smoke on macOS, Windows, and Linux
 
 ## Milestone 7 — Local product signals
@@ -68,11 +72,33 @@
 - [x] Record accepted, dismissed, and snoozed suggestions locally
 - [x] Keep usage signals inspectable as bounded JSONL
 - [x] Avoid remote analytics and personal identifiers
-- [ ] Use aggregate local signals to tune companion silence and ranking
+- [x] Add opt-in aggregate local silence tuning after a per-role evidence threshold
+- [x] Explain every derived role limit in a local Markdown report
+
+## Milestone 8 — Daily conversation workflow
+
+- [x] Restore and display a bounded multi-turn Codex timeline
+- [x] Preserve the composer draft and respectful follow-tail behavior
+- [x] Attach Council reviews to the turns they reviewed
+- [x] Keep historical suggestion actions bound to their original turn
+- [x] Browse workspace sessions through native Quick Pick
+- [x] Resume, rename locally, and archive sessions explicitly
+
+## Milestone 9 — Desktop Preview 0.1
+
+- [x] Add manual Code - OSS packaging tasks for Linux x64, macOS arm64, and Windows x64
+- [x] Verify the integrated extension inside packaged outputs
+- [x] Produce portable archives, SHA-256 checksums, and reproducibility manifests
+- [x] State signing and notarization status explicitly
+- [x] Add clean-machine smoke and promotion checklists
+- [ ] Run the three-platform artifact workflow
+- [ ] Complete clean-machine interactive smoke tests
+- [ ] Produce signed and notarized platform installers
 
 ## Next product tranche
 
-- [ ] Replace generated built-in atlases with final validated character art
+- [ ] Persist completed Council reviews across application restarts
+- [ ] Add external Pet Pack archives and file-backed atlas assets
 - [ ] Add draggable anchor overrides without breaking role defaults
-- [ ] Add graph-aware suggestion ranking from local aggregate signals
-- [ ] Package signed desktop release candidates for each platform
+- [ ] Replace generated built-in atlases with final validated character art
+- [ ] Add signed update channels after installer trust is established
