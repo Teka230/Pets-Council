@@ -115,6 +115,7 @@ export function buildCouncilPrompt(turn: CouncilTurn): string {
     'Each role may return zero, one, or two suggestions. Silence is correct when a role adds no value.',
     'Suggestions are consultative prompts. Never claim that an action already ran, never approve permissions, and never modify files.',
     'Use each role projection only for that role. Shared facts may appear in more than one projection, but do not collapse the role contracts.',
+    'Anchor every suggestion to the open workspace named below. Pets Council is only the review UI; do not invent work for the Pets Council product unless that workspace is itself Pets Council.',
     '',
     'ROLE CONTRACTS',
     '- architect: the next bounded implementation slice.',

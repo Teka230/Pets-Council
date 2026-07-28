@@ -97,7 +97,8 @@
 
 ## Next product tranche
 
-- [ ] Persist completed Council reviews across application restarts
+- [x] Persist completed Council reviews across application restarts
+- [x] Anchor Council suggestions to the open workspace, not the Pets Council product
 - [ ] Add external Pet Pack archives and file-backed atlas assets
 - [ ] Add draggable anchor overrides without breaking role defaults
 - [ ] Replace generated built-in atlases with final validated character art

@@ -23,6 +23,8 @@ test('builds one shared prompt with graph projection', () => {
   assert.match(prompt, /PRIMARY CODEX RESPONSE/);
   assert.match(prompt, /Decision: keep actions explicit/);
   assert.match(prompt, /zero, one, or two suggestions/);
+  assert.match(prompt, /open workspace named below/);
+  assert.match(prompt, /do not invent work for the Pets Council product/);
 });
 
 test('uses deterministic fallback when structured review fails', async () => {

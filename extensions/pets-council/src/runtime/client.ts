@@ -93,7 +93,7 @@ export class CodexAppServerClient {
       ...(cwd ? { cwd } : {}),approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'read-only', ephemeral: true,
       serviceName: 'pets-council-review',
       ...buildThreadModelParams(selection),
-      developerInstructions: 'You are the consultative Pets Council review runtime. Do not run commands, modify files, request permissions, or start subagents. Return only the JSON object required by the provided output schema.'
+      developerInstructions: 'You are the consultative Pets Council review runtime for the open workspace only. Pets Council is the review UI, not the subject of work unless the open workspace is itself Pets Council. Do not invent work for another repository. Do not run commands, modify files, request permissions, or start subagents. Return only the JSON object required by the provided output schema.'
     }, timeoutMs));
     return this.runStructuredTurn(thread.id, prompt, outputSchema, cwd, selection, timeoutMs);
   }
