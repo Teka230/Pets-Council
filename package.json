@@ -17,6 +17,7 @@
     "native:verify": "node scripts/verify-native-overlay.mjs",
     "native:verify-source": "node scripts/verify-native-overlay.mjs --source",
     "desktop:smoke": "node scripts/desktop-smoke.mjs --compile-only",
-    "desktop:launch": "node scripts/desktop-smoke.mjs"
+    "desktop:launch": "node scripts/desktop-smoke.mjs",
+    "preview:artifact": "node scripts/package-preview-artifact.mjs"
   }
 }
