@@ -14,12 +14,14 @@ export class SuggestionUsageSignalStore{
     const location=await resolveLocation();
     if(!location)throw new Error('Open a folder or workspace before recording suggestion usage.');
     const signal:SuggestionUsageSignal={version:1,recordedAt:new Date().toISOString(),action,turnId:turn.turnId,suggestionId:suggestion.id,role:suggestion.role,title:suggestion.title.slice(0,180),provider};
-    const existing=await readLines(location.uri);
-    const lines=[...existing,JSON.stringify(signal)].slice(-MAX_SIGNALS);
+    const existing=await readSignals(location.uri);
+    const lines=[...existing.map((entry)=>JSON.stringify(entry)),JSON.stringify(signal)].slice(-MAX_SIGNALS);
     await vscode.workspace.fs.createDirectory(parentUri(location.uri));
     await vscode.workspace.fs.writeFile(location.uri,encoder.encode(`${lines.join('\n')}\n`));
     return location.displayPath;
   }
+
+  async load():Promise<readonly SuggestionUsageSignal[]>{const location=await resolveLocation();return location?readSignals(location.uri):[];}
 
   async open():Promise<void>{
     const location=await resolveLocation();
@@ -38,7 +40,7 @@ async function resolveLocation():Promise<{uri:vscode.Uri;displayPath:string}|und
   const displayPath=await isDirectory(filRouge)?'.filrouge/council/usage-signals.jsonl':'.pets-council/usage-signals.jsonl';
   return{uri:vscode.Uri.joinPath(folder.uri,...displayPath.split('/')),displayPath};
 }
-async function readLines(uri:vscode.Uri):Promise<readonly string[]>{try{const bytes=await vscode.workspace.fs.readFile(uri);const bounded=bytes.byteLength>MAX_BYTES?bytes.slice(bytes.byteLength-MAX_BYTES):bytes;return decoder.decode(bounded).split(/\r?\n/).map((line)=>line.trim()).filter((line)=>Boolean(parseUsageSignalLine(line)));}catch{return[];}}
+async function readSignals(uri:vscode.Uri):Promise<readonly SuggestionUsageSignal[]>{try{const bytes=await vscode.workspace.fs.readFile(uri);const bounded=bytes.byteLength>MAX_BYTES?bytes.slice(bytes.byteLength-MAX_BYTES):bytes;return decoder.decode(bounded).split(/\r?\n/).map((line)=>parseUsageSignalLine(line.trim())).filter((signal):signal is SuggestionUsageSignal=>Boolean(signal)).slice(-MAX_SIGNALS);}catch{return[];}}
 async function exists(uri:vscode.Uri):Promise<boolean>{try{await vscode.workspace.fs.stat(uri);return true;}catch{return false;}}
 async function isDirectory(uri:vscode.Uri):Promise<boolean>{try{return((await vscode.workspace.fs.stat(uri)).type&vscode.FileType.Directory)!==0;}catch{return false;}}
 function parentUri(uri:vscode.Uri):vscode.Uri{const segments=uri.path.split('/').filter(Boolean);segments.pop();return uri.with({path:`/${segments.join('/')}`});}

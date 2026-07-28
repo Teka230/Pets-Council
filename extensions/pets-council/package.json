@@ -2,7 +2,7 @@
   "name": "pets-council",
   "displayName": "Pets Council",
   "description": "A Codex workspace with a consultative council of living companions.",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "publisher": "teka230",
   "license": "MIT",
   "engines": { "vscode": "^1.100.0" },
@@ -47,6 +47,12 @@
           "enum": ["system", "full", "reduced"],
           "default": "system",
           "description": "Controls companion animation. System follows the operating-system reduced-motion preference."
+        },
+        "petsCouncil.localRanking.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Opt in to reordering Council suggestions from bounded local accepted, dismissed, and snoozed outcomes. No remote analytics are used."
         }
       }
     },
@@ -55,7 +61,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/memory/usageSignalStore.test.js dist/onboarding/diagnosticReport.test.js dist/pets/petPack.test.js dist/pets/placement.test.js dist/runtime/jsonl.test.js dist/runtime/modelSelection.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/council/suggestionRanking.test.js dist/memory/contextGraph.test.js dist/memory/usageSignalStore.test.js dist/onboarding/diagnosticReport.test.js dist/pets/petPack.test.js dist/pets/placement.test.js dist/runtime/jsonl.test.js dist/runtime/modelSelection.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

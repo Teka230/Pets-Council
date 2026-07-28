@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { CodexCouncilProvider, DeterministicCouncilProvider, emptyReviewForState, idleCouncilState, reviewingCouncilState } from './council/provider';
+import { rankCouncilReview } from './council/suggestionRanking';
 import type { CouncilReview, CouncilReviewState, CouncilRoleId, CouncilSuggestion, CouncilTurn } from './domain';
 import { SharedContextGraphStore } from './memory/contextGraphStore';
 import { SuggestionUsageSignalStore, type SuggestionUsageAction } from './memory/usageSignalStore';
@@ -71,7 +72,11 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
     const sequence=++reviewSequence;currentReview=emptyReviewForState(turn.turnId);councilState=reviewingCouncilState(turn.turnId);renderCurrent();
     const outcome=await intelligent.review(turn,currentWorkspaceDirectory());
     if(disposed||sequence!==reviewSequence||currentTurn?.turnId!==turn.turnId)return;
-    currentReview=outcome.review;councilState=outcome.state;renderCurrent();
+    if(readLocalRankingEnabled()){
+      const signals=await usageStore.load();if(disposed||sequence!==reviewSequence||currentTurn?.turnId!==turn.turnId)return;
+      currentReview=rankCouncilReview(outcome.review,signals).review;councilState={...outcome.state,message:`${outcome.state.message} Locally ranked from ${signals.length} explicit suggestion outcomes.`};
+    }else{currentReview=outcome.review;councilState=outcome.state;}
+    renderCurrent();
   };
   const bridgeCompletedTurn=():boolean=>{
     if(!currentTurn)return false;const bridged=buildCouncilTurnFromCompletedCodexTurn(currentTurn,runtime.status);
@@ -126,6 +131,7 @@ function currentWorkspaceDirectory():string|undefined{const activeUri=vscode.win
 function currentWorkspaceSessionKey():string{return createWorkspaceSessionKey((vscode.workspace.workspaceFolders??[]).map((folder)=>folder.uri.toString()));}
 function readConfiguredCodexBinary():string|undefined{return vscode.workspace.getConfiguration('petsCouncil').get<string>('codexBinary');}
 function readPetMotionPreference():PetMotionPreference{return vscode.workspace.getConfiguration('petsCouncil').get<PetMotionPreference>('petMotion','system');}
+function readLocalRankingEnabled():boolean{return vscode.workspace.getConfiguration('petsCouncil').get<boolean>('localRanking.enabled',false);}
 function parsePlacementUpdate(value:unknown):{role:CouncilRoleId;placement:{x:number;y:number}}|undefined{if(typeof value!=='object'||value===null)return undefined;const candidate=value as{role?:unknown;placement?:unknown};if(!['architect','guardian','strategist','notetaker'].includes(String(candidate.role)))return undefined;const placement=normalizePetPlacement(candidate.placement);return placement?{role:candidate.role as CouncilRoleId,placement}:undefined;}
 function isCouncilWebviewMessage(message:unknown):message is CouncilWebviewMessage{
   if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown;model?:unknown;modelProvider?:unknown;effort?:unknown};
