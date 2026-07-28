@@ -42,7 +42,7 @@ function character(id:CanonicalPetArtwork['id'],state:PetVisualState):string {
 
 function orbital(state:PetVisualState):string {
   const eye=eyePair(state,34,47,62,47);
-  return `<ellipse cx="48" cy="54" rx="27" ry="25" fill="#8398ff" class="line"/><ellipse cx="48" cy="54" rx="38" ry="10" fill="none" stroke="#ffc857" stroke-width="5" transform="rotate(-14 48 54)"/><circle cx="67" cy="28" r="7" fill="#ffc857" class="line"/><path d="M30 73q18 13 36 0" fill="#6577d6" class="line"/>${eye}${mouth(state,48,60)}</g>`;
+  return `<ellipse cx="48" cy="54" rx="27" ry="25" fill="#8398ff" class="line"/><ellipse cx="48" cy="54" rx="38" ry="10" fill="none" stroke="#ffc857" stroke-width="5" transform="rotate(-14 48 54)"/><circle cx="67" cy="28" r="7" fill="#ffc857" class="line"/><path d="M30 73q18 13 36 0" fill="#6577d6" class="line"/>${eye}${mouth(state,48,60)}`;
 }
 
 function mono(state:PetVisualState):string {
