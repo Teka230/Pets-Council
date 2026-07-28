@@ -50,6 +50,8 @@
 - [x] Add atlas-backed sprite rendering with glyph fallback
 - [x] Validate strip v1 and Hatch runtime v2 atlas contracts
 - [x] Anchor companions near editor, terminal, sidebar, and project memory
+- [x] Ship canonical versioned vector artwork with explicit attribution and license
+- [x] Add draggable, workspace-persisted positions with critical-state anchor fallback
 
 ## Milestone 6 — Native Code - OSS layer
 
@@ -68,11 +70,24 @@
 - [x] Record accepted, dismissed, and snoozed suggestions locally
 - [x] Keep usage signals inspectable as bounded JSONL
 - [x] Avoid remote analytics and personal identifiers
-- [ ] Use aggregate local signals to tune companion silence and ranking
+- [x] Add transparent opt-in ranking from explicit local outcomes
+- [ ] Tune companion silence only after enough real usage data exists
+
+## Milestone 8 — Desktop Preview 0.1
+
+- [x] Add first-run onboarding without automatic connection or execution
+- [x] Add read-only product diagnostics for workspace, Codex, Pet Pack, overlay, and storage
+- [x] Define Preview product identity and platform application identifiers
+- [x] Add reproducible unsigned package preparation and archive manifests
+- [x] Add manual Linux, macOS, and Windows packaging workflows
+- [ ] Complete interactive macOS smoke with a real authenticated Codex turn
+- [ ] Complete interactive Windows and Linux smoke captures
+- [ ] Add signing, macOS notarization, and protected release credentials
+- [ ] Publish the first externally shareable Desktop Preview archive
 
 ## Next product tranche
 
-- [ ] Replace generated built-in atlases with final validated character art
-- [ ] Add draggable anchor overrides without breaking role defaults
-- [ ] Add graph-aware suggestion ranking from local aggregate signals
-- [ ] Package signed desktop release candidates for each platform
+- [ ] Replace or extend canonical vector companions with user-validated Hatch character packs
+- [ ] Add a visible per-companion reset action in the native overlay
+- [ ] Evaluate ranking quality from real accepted, dismissed, and snoozed outcomes
+- [ ] Add crash recovery and release-channel update metadata
