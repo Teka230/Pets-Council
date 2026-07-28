@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { CodexCouncilProvider, DeterministicCouncilProvider, emptyReviewForState, idleCouncilState, reviewingCouncilState } from './council/provider';
-import type { CouncilReview, CouncilReviewState, CouncilSuggestion, CouncilTurn } from './domain';
+import type { CouncilReview, CouncilReviewState, CouncilRoleId, CouncilSuggestion, CouncilTurn } from './domain';
 import { SharedContextGraphStore } from './memory/contextGraphStore';
 import { SuggestionUsageSignalStore, type SuggestionUsageAction } from './memory/usageSignalStore';
 import { buildPetSnapshots, type PetMotionPreference } from './pets/petPack';
+import { applyPetPlacements, normalizePetPlacement } from './pets/placement';
+import { PetPlacementStore } from './pets/placementStore';
 import { NativeOverlayBridge } from './pets/nativeOverlayBridge';
 import { buildCouncilTurnFromCompletedCodexTurn } from './runtime/councilBridge';
 import { CodexRuntimeService, resolveCodexBinary } from './runtime/service';
@@ -19,25 +21,27 @@ type ApprovalMessage=Readonly<{type:'respondCodexApproval';decision:CodexApprova
 type SaveSuggestionMessage=Readonly<{type:'saveCouncilSuggestion';suggestionId:string}>;
 type UsageSignalMessage=Readonly<{type:'recordSuggestionSignal';suggestionId:string;action:SuggestionUsageAction}>;
 type ModelSelectionMessage=Readonly<{type:'setCodexModel';model:string;modelProvider?:string}|{type:'setCodexEffort';effort?:string}>;
-type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'}>;
+type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'|'resetPetPlacements'}>;
 type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|ModelSelectionMessage|SimpleMessage;
 
 export function activate(context:vscode.ExtensionContext):void{
   const runtime=new CodexRuntimeService(resolveCodexBinary(readConfiguredCodexBinary()),createStdioCodexTransport);
-  const sessionStore=new CodexSessionStore(context.workspaceState),graphStore=new SharedContextGraphStore(),usageStore=new SuggestionUsageSignalStore(),nativeOverlay=new NativeOverlayBridge();
+  const sessionStore=new CodexSessionStore(context.workspaceState),graphStore=new SharedContextGraphStore(),usageStore=new SuggestionUsageSignalStore(),placementStore=new PetPlacementStore(context.workspaceState),nativeOverlay=new NativeOverlayBridge();
   let sessionKey=currentWorkspaceSessionKey(),persistedThreadId=sessionStore.load(sessionKey)?.threadId;
   runtime.setResumeCandidate(sessionStore.load(sessionKey));
 
   const persistenceSubscription=runtime.onDidChange((status)=>{const threadId=status.thread.thread?.id;if(status.thread.phase!=='ready'||!threadId||threadId===persistedThreadId)return;persistedThreadId=threadId;void sessionStore.save(sessionKey,threadId).then((candidate)=>runtime.setResumeCandidate(candidate));});
   const workspaceSubscription=vscode.workspace.onDidChangeWorkspaceFolders(()=>{if(runtime.status.thread.phase==='ready')return;sessionKey=currentWorkspaceSessionKey();const candidate=sessionStore.load(sessionKey);persistedThreadId=candidate?.threadId;runtime.setResumeCandidate(candidate);});
   const commands=[
-    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>showCouncilPanel(runtime,graphStore,usageStore,nativeOverlay)),
+    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>showCouncilPanel(runtime,graphStore,usageStore,placementStore,nativeOverlay,()=>sessionKey)),
     vscode.commands.registerCommand('petsCouncil.openContextGraph',()=>graphStore.open()),
     vscode.commands.registerCommand('petsCouncil.addOpenQuestion',()=>graphStore.addOpenQuestion()),
     vscode.commands.registerCommand('petsCouncil.resolveOpenQuestion',()=>graphStore.resolveOpenQuestion()),
     vscode.commands.registerCommand('petsCouncil.queryContextGraph',()=>graphStore.query()),
     vscode.commands.registerCommand('petsCouncil.supersedeDecision',()=>graphStore.supersedeDecision()),
-    vscode.commands.registerCommand('petsCouncil.openUsageSignals',()=>usageStore.open())
+    vscode.commands.registerCommand('petsCouncil.openUsageSignals',()=>usageStore.open()),
+    vscode.commands.registerCommand('petsCouncil.resetPetPlacements',async()=>{await placementStore.reset(sessionKey);void vscode.window.showInformationMessage('Pets Council companion positions reset for this workspace.');}),
+    vscode.commands.registerCommand('petsCouncil.petPlacement.update',async(value:unknown)=>{const update=parsePlacementUpdate(value);if(update)await placementStore.save(sessionKey,update.role,update.placement);})
   ];
   const configurationSubscription=vscode.workspace.onDidChangeConfiguration((event)=>{
     if(event.affectsConfiguration('petsCouncil.codexBinary'))runtime.setBinary(resolveCodexBinary(readConfiguredCodexBinary()));
@@ -48,14 +52,14 @@ export function activate(context:vscode.ExtensionContext):void{
 
 export function deactivate():void{/* ExtensionContext disposes shared services. */}
 
-function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGraphStore,usageStore:SuggestionUsageSignalStore,nativeOverlay:NativeOverlayBridge):void{
+function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGraphStore,usageStore:SuggestionUsageSignalStore,placementStore:PetPlacementStore,nativeOverlay:NativeOverlayBridge,workspaceKey:()=>string):void{
   const panel=vscode.window.createWebviewPanel('petsCouncil.panel','Pets Council',vscode.ViewColumn.Beside,{enableScripts:true,retainContextWhenHidden:true});
   const deterministic=new DeterministicCouncilProvider(),intelligent=new CodexCouncilProvider(runtime,deterministic);
   let disposed=false,renderSequence=0,reviewSequence=0,currentTurn:CouncilTurn|undefined,currentReview:CouncilReview|undefined,councilState:CouncilReviewState=idleCouncilState(),lastBridgedTurnId:string|undefined;
 
   const renderCurrent=():void=>{
     if(disposed||!currentTurn||!currentReview)return;
-    const pets=buildPetSnapshots(currentReview,councilState,runtime.status);
+    const pets=applyPetPlacements(buildPetSnapshots(currentReview,councilState,runtime.status),placementStore.load(workspaceKey()));
     panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,readPetMotionPreference(),createNonce());
     void nativeOverlay.publish({visible:true,companions:pets});
   };
@@ -104,6 +108,7 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
       case'recordSuggestionSignal':await recordUsage(message.suggestionId,message.action);return;
       case'openContextGraph':await graphStore.open();return;
       case'openUsageSignals':await usageStore.open();return;
+      case'resetPetPlacements':await placementStore.reset(workspaceKey());renderCurrent();return;
       case'copyPrompt':{const prompt=message.value.trim();if(!prompt)return;await vscode.env.clipboard.writeText(prompt);void vscode.window.showInformationMessage('Council prompt copied. Nothing was executed.');}
     }
   });
@@ -117,9 +122,10 @@ function currentWorkspaceDirectory():string|undefined{const activeUri=vscode.win
 function currentWorkspaceSessionKey():string{return createWorkspaceSessionKey((vscode.workspace.workspaceFolders??[]).map((folder)=>folder.uri.toString()));}
 function readConfiguredCodexBinary():string|undefined{return vscode.workspace.getConfiguration('petsCouncil').get<string>('codexBinary');}
 function readPetMotionPreference():PetMotionPreference{return vscode.workspace.getConfiguration('petsCouncil').get<PetMotionPreference>('petMotion','system');}
+function parsePlacementUpdate(value:unknown):{role:CouncilRoleId;placement:{x:number;y:number}}|undefined{if(typeof value!=='object'||value===null)return undefined;const candidate=value as{role?:unknown;placement?:unknown};if(!['architect','guardian','strategist','notetaker'].includes(String(candidate.role)))return undefined;const placement=normalizePetPlacement(candidate.placement);return placement?{role:candidate.role as CouncilRoleId,placement}:undefined;}
 function isCouncilWebviewMessage(message:unknown):message is CouncilWebviewMessage{
   if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown;model?:unknown;modelProvider?:unknown;effort?:unknown};
-  if(['refreshContext','openFolder','connectCodex','disconnectCodex','startCodexThread','resumeCodexThread','interruptCodexTurn','openContextGraph','openUsageSignals'].includes(String(candidate.type)))return true;
+  if(['refreshContext','openFolder','connectCodex','disconnectCodex','startCodexThread','resumeCodexThread','interruptCodexTurn','openContextGraph','openUsageSignals','resetPetPlacements'].includes(String(candidate.type)))return true;
   if((candidate.type==='setCodexModel'&&typeof candidate.model==='string')||(candidate.type==='setCodexEffort'&&(candidate.effort===undefined||typeof candidate.effort==='string')))return true;
   if((candidate.type==='copyPrompt'||candidate.type==='startCodexTurn')&&typeof candidate.value==='string')return true;
   if(candidate.type==='saveCouncilSuggestion'&&typeof candidate.suggestionId==='string')return true;
