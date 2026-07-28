@@ -10,7 +10,19 @@ export type JsonRpcResponse = Readonly<{ id: JsonRpcId; result?: unknown; error?
 
 export type CodexInitializeResult = Readonly<{ userAgent?: string; codexHome?: string; platformFamily?: string; platformOs?: string }>;
 export type CodexRestoredTurn = Readonly<{ turnId: string; userMessage: string; assistantMessage: string; startedAt?: number; completedAt?: number }>;
-export type CodexThreadInfo = Readonly<{ id: string; sessionId?: string; preview?: string; cwd?: string; model?: string; modelProvider?: string; reasoningEffort?: string; approvalPolicy?: string; approvalsReviewer?: string; lastCompletedTurn?: CodexRestoredTurn }>;
+export type CodexThreadInfo = Readonly<{
+  id: string;
+  sessionId?: string;
+  preview?: string;
+  cwd?: string;
+  model?: string;
+  modelProvider?: string;
+  reasoningEffort?: string;
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+  completedTurns?: readonly CodexRestoredTurn[];
+  lastCompletedTurn?: CodexRestoredTurn;
+}>;
 export type CodexThreadPhase = 'none' | 'starting' | 'ready' | 'error';
 export type CodexThreadStatus = Readonly<{ phase: CodexThreadPhase; message: string; thread?: CodexThreadInfo }>;
 export type CodexTurnPhase = 'idle' | 'starting' | 'streaming' | 'completed' | 'error';
