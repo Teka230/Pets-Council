@@ -35,6 +35,10 @@
 - [x] Save accepted proposals only after explicit action
 - [x] Project durable context into future Council reviews
 - [x] Make the Greffier a first-class role
+- [x] Add graph search and active-node queries
+- [x] Add open-question creation and resolution workflows
+- [x] Preserve superseded decisions while excluding them from active projections
+- [x] Add separate Codex, Architect, Guardian, Strategist, and Greffier projections
 
 ## Milestone 5 — Living companions
 
@@ -43,6 +47,9 @@
 - [x] Add idle, thinking, suggestion, silent, approval, and error states
 - [x] Add webview animation and reduced-motion behavior
 - [x] Add click-to-open role navigation
+- [x] Add atlas-backed sprite rendering with glyph fallback
+- [x] Validate strip v1 and Hatch runtime v2 atlas contracts
+- [x] Anchor companions near editor, terminal, sidebar, and project memory
 
 ## Milestone 6 — Native Code - OSS layer
 
@@ -50,13 +57,22 @@
 - [x] Add extension-to-workbench visual state commands
 - [x] Add idempotent apply and verify scripts
 - [x] Apply the overlay during bootstrap
-- [ ] Validate the patched workbench with a full local Code - OSS compile and desktop smoke test
-- [ ] Replace glyph companions with validated sprite Pet Packs
-- [ ] Add movement between editor, terminal, and sidebar anchors
+- [x] Add a reproducible full Code - OSS compile smoke command
+- [x] Add a manual heavyweight desktop smoke workflow
+- [x] Sync the compiled integrated extension into Code - OSS
+- [x] Bootstrap, patch, and fully compile the pinned Code - OSS workbench on Linux CI
+- [ ] Run and capture the interactive desktop smoke on macOS, Windows, and Linux
+
+## Milestone 7 — Local product signals
+
+- [x] Record accepted, dismissed, and snoozed suggestions locally
+- [x] Keep usage signals inspectable as bounded JSONL
+- [x] Avoid remote analytics and personal identifiers
+- [ ] Use aggregate local signals to tune companion silence and ranking
 
 ## Next product tranche
 
-- [ ] Add graph queries, supersession, and open-question workflows
-- [ ] Add multiple project-memory projections per actor
-- [ ] Add Petdex-compatible sprite loading and the Hatch runtime v2 atlas
-- [ ] Add local usage signals for accepted, dismissed, and snoozed suggestions
+- [ ] Replace generated built-in atlases with final validated character art
+- [ ] Add draggable anchor overrides without breaking role defaults
+- [ ] Add graph-aware suggestion ranking from local aggregate signals
+- [ ] Package signed desktop release candidates for each platform

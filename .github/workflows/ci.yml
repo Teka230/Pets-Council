@@ -30,13 +30,25 @@ jobs:
         run: npm run check
 
       - name: Type-check extension
-        run: npm run typecheck
+        run: npm run typecheck 2>&1 | tee typecheck.log
 
       - name: Test Council, context graph, and runtime
-        run: npm test
+        run: npm test 2>&1 | tee test.log
 
       - name: Build extension
-        run: npm run build
+        run: npm run build 2>&1 | tee build.log
 
       - name: Verify native overlay sources
-        run: npm run native:verify-source
+        run: npm run native:verify-source 2>&1 | tee native-verify.log
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-check-diagnostics
+          path: |
+            typecheck.log
+            test.log
+            build.log
+            native-verify.log
+          if-no-files-found: ignore

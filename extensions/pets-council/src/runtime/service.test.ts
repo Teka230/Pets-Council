@@ -14,6 +14,24 @@ class TestTransport implements CodexMessageTransport {
     if (request.method === 'initialize') {
       this.reply({ id: request.id, result: { userAgent: 'codex-test' } });
     }
+    if (request.method === 'model/list') {
+      this.reply({
+        id: request.id,
+        result: {
+          data: [{
+            id: 'gpt-5.5',
+            model: 'gpt-5.5',
+            displayName: 'GPT-5.5',
+            isDefault: true,
+            supportedReasoningEfforts: ['medium', 'high'],
+            defaultReasoningEffort: 'medium'
+          }]
+        }
+      });
+    }
+    if (request.method === 'config/read') {
+      this.reply({ id: request.id, result: { model: 'gpt-5.5', model_reasoning_effort: 'medium' } });
+    }
     if (request.method === 'thread/start') {
       this.reply({ id: request.id, result: { thread: { id: 'thread-new' }, approvalsReviewer: 'user' } });
     }
@@ -46,7 +64,7 @@ class TestTransport implements CodexMessageTransport {
               }
             ]
           },
-          model: 'gpt-test',
+          model: 'gpt-5.5',
           modelProvider: 'openai',
           cwd: '/workspace',
           approvalsReviewer: 'user'
@@ -94,7 +112,7 @@ class TestTransport implements CodexMessageTransport {
     this.closes.clear();
   }
 
-  private emit(message: unknown): void {
+  emit(message: unknown): void {
     for (const listener of this.messages) {
       listener(message);
     }
@@ -132,15 +150,19 @@ test('resumes the saved thread and restores its last completed exchange', async 
 
   await service.resumeThread(undefined, '/workspace');
 
-  assert.deepEqual(transport.sent[2], {
-    id: 1,
-    method: 'thread/resume',
-    params: {
-      threadId: 'thread-saved',
-      cwd: '/workspace',
-      approvalsReviewer: 'user'
+  assert.deepEqual(
+    transport.sent.find((message) => (message as { method?: string }).method === 'thread/resume'),
+    {
+      id: 3,
+      method: 'thread/resume',
+      params: {
+        threadId: 'thread-saved',
+        cwd: '/workspace',
+        approvalsReviewer: 'user',
+        model: 'gpt-5.5'
+      }
     }
-  });
+  );
   assert.equal(service.status.thread.phase, 'ready');
   assert.equal(service.status.thread.thread?.id, 'thread-saved');
   assert.equal(service.status.turn.phase, 'completed');
@@ -171,6 +193,61 @@ test('disconnect preserves the saved session offer but clears active runtime sta
   assert.equal(service.status.thread.phase, 'none');
   assert.equal(service.status.turn.phase, 'idle');
   assert.equal(service.status.resumeCandidate?.threadId, 'thread-saved');
+});
+
+test('loads model catalog after connect and applies effort on turn start', async () => {
+  const { service, transport } = await connectedService();
+
+  assert.equal(service.status.models.length, 1);
+  assert.deepEqual(service.status.modelSelection, { model: 'gpt-5.5', effort: 'medium' });
+  service.setModelSelection({ effort: 'high' });
+  await service.startThread('/workspace');
+  await service.startTurn('Hello', '/workspace');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(
+    transport.sent.find((message) => (message as { method?: string }).method === 'turn/start'),
+    {
+      id: 4,
+      method: 'turn/start',
+      params: {
+        threadId: 'thread-new',
+        input: [{ type: 'text', text: 'Hello' }],
+        cwd: '/workspace',
+        approvalsReviewer: 'user',
+        effort: 'high'
+      }
+    }
+  );
+  service.dispose();
+});
+
+test('records token usage notifications from Codex', async () => {
+  const { service, transport } = await connectedService();
+  await service.startThread('/workspace');
+
+  transport.emit({
+    method: 'thread/tokenUsage/updated',
+    params: {
+      threadId: 'thread-new',
+      tokenUsage: {
+        last: {
+          totalTokens: 900,
+          inputTokens: 600,
+          cachedInputTokens: 0,
+          outputTokens: 300,
+          reasoningOutputTokens: 50
+        },
+        modelContextWindow: 128000,
+        usedPercent: 33
+      }
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(service.status.tokenUsage?.last?.totalTokens, 900);
+  assert.equal(service.status.tokenUsage?.quotaUsedPercent, 33);
+  service.dispose();
 });
 
 test('a normal new turn still completes after session work', async () => {
