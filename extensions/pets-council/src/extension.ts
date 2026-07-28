@@ -31,7 +31,7 @@ type UsageSignalMessage=Readonly<{type:'recordSuggestionSignal';suggestionId:str
 type ModelSelectionMessage=Readonly<{type:'setCodexModel';model:string;modelProvider?:string}|{type:'setCodexEffort';effort?:string}>;
 type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'|'browseCodexSessions'|'applyProductLayout'}>;
 type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|ModelSelectionMessage|SimpleMessage;
-type SessionQuickPickItem=vscode.QuickPickItem&Readonly<{kind:'new'|'thread';thread?:CodexThreadSummary}>;
+type SessionQuickPickItem=vscode.QuickPickItem&Readonly<{sessionAction:'new'|'thread';thread?:CodexThreadSummary}>;
 const PRODUCT_LAYOUT_KEY='petsCouncil.productLayout';
 
 export function activate(context:vscode.ExtensionContext):void{
@@ -73,7 +73,40 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
 async function installPetPack(store:ExternalPetPackStore,workspaceKey:string,activate:(pack:PetPackManifest)=>void):Promise<void>{const selected=await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,openLabel:'Select Pet Pack',title:'Select a folder containing pet-pack.json'});const folder=selected?.[0];if(!folder)return;try{const text=new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folder,'pet-pack.json')));const parsed=parsePetPackJson(text);if(!parsed.manifest)throw new Error(parsed.errors.join('\n'));const pack=parsed.manifest;const choice=await vscode.window.showInformationMessage(`Install “${pack.name}” ${pack.version} with ${pack.pets.length} pets?`,'Install');if(choice!=='Install')return;activate(await store.install(workspaceKey,folder));void vscode.window.showInformationMessage(`Pet Pack “${pack.name}” installed for this workspace.`);}catch(error){void vscode.window.showErrorMessage(`Pet Pack installation failed: ${error instanceof Error?error.message:String(error)}`);}}
 async function offerProductLayout(context:vscode.ExtensionContext):Promise<void>{if(!shouldOfferProductLayout(context.globalState.get(PRODUCT_LAYOUT_KEY)))return;const choice=await vscode.window.showInformationMessage('Use the Pets Council product layout? This closes the auxiliary Chat bar once and keeps Pets Council as the primary surface.','Apply layout','Keep current layout');if(choice==='Apply layout')await vscode.commands.executeCommand('petsCouncil.applyProductLayout');else if(choice==='Keep current layout')await context.globalState.update(PRODUCT_LAYOUT_KEY,createProductLayoutState());}
 async function applyProductLayout(context:vscode.ExtensionContext,openCouncil:()=>void):Promise<void>{try{await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');}catch{/* Host may not expose an auxiliary bar. */}await context.globalState.update(PRODUCT_LAYOUT_KEY,createProductLayoutState());openCouncil();}
-async function browseCodexSessions(runtime:CodexRuntimeService,browser:CodexSessionBrowserService,store:CodexSessionBrowserStore,workspaceKey:string):Promise<void>{if(runtime.status.phase!=='ready'){const connect=await vscode.window.showInformationMessage('Connect Codex before browsing workspace sessions.','Connect Codex');if(connect!=='Connect Codex')return;await runtime.connect();if(runtime.status.phase!=='ready')return;}const threads=await browser.list(currentWorkspaceDirectory());const aliases=store.loadAliases(workspaceKey),activeId=runtime.status.thread.thread?.id;const items:SessionQuickPickItem[]=[{label:'$(add) New Codex session',description:'Start an empty explicit thread',kind:'new'},...threads.map((thread)=>({label:`${thread.id===activeId?'$(circle-filled)':'$(comment-discussion)'} ${sessionDisplayName(thread,aliases)}`,description:[thread.model,formatSessionDate(thread.recencyAt??thread.updatedAt??thread.createdAt)].filter(Boolean).join(' · '),detail:thread.cwd??thread.preview,kind:'thread' as const,thread}))];const selected=await vscode.window.showQuickPick(items,{title:'Pets Council — Workspace Codex sessions',placeHolder:'Choose a session or start a new one',matchOnDescription:true,matchOnDetail:true});if(!selected)return;if(selected.kind==='new'){await runtime.startThread(currentWorkspaceDirectory());return;}const thread=selected.thread;if(!thread)return;const action=await vscode.window.showQuickPick(['Resume','Rename locally','Archive'] as const,{title:sessionDisplayName(thread,aliases),placeHolder:'Choose an explicit session action'});if(!action)return;if(action==='Resume'){await runtime.resumeThread(thread.id,currentWorkspaceDirectory());return;}if(action==='Rename locally'){const name=await vscode.window.showInputBox({title:'Rename Codex session locally',value:aliases[thread.id]??'',prompt:'Stored only in this workspace. Clear the field to restore the server preview.'});if(name!==undefined)await store.rename(workspaceKey,thread.id,name);return;}const confirmation=await vscode.window.showWarningMessage(`Archive “${sessionDisplayName(thread,aliases)}”?`,'Archive');if(confirmation==='Archive'){await browser.archive(thread.id);await store.forget(workspaceKey,thread.id);}}
+async function browseCodexSessions(runtime:CodexRuntimeService,browser:CodexSessionBrowserService,store:CodexSessionBrowserStore,workspaceKey:string):Promise<void>{
+  if(runtime.status.phase!=='ready'){
+    const connect=await vscode.window.showInformationMessage('Connect Codex before browsing workspace sessions.','Connect Codex');
+    if(connect!=='Connect Codex')return;
+    await runtime.connect();
+  }
+  if(runtime.status.phase!=='ready')return;
+  const threads=await browser.list(currentWorkspaceDirectory());
+  const aliases=store.loadAliases(workspaceKey),activeId=runtime.status.thread.thread?.id;
+  const items:SessionQuickPickItem[]=[
+    {label:'$(add) New Codex session',description:'Start an empty explicit thread',sessionAction:'new'},
+    ...threads.map((thread)=>({
+      label:`${thread.id===activeId?'$(circle-filled)':'$(comment-discussion)'} ${sessionDisplayName(thread,aliases)}`,
+      description:[thread.model,formatSessionDate(thread.recencyAt??thread.updatedAt??thread.createdAt)].filter(Boolean).join(' · '),
+      detail:thread.cwd??thread.preview,
+      sessionAction:'thread' as const,
+      thread
+    }))
+  ];
+  const selected=await vscode.window.showQuickPick(items,{title:'Pets Council — Workspace Codex sessions',placeHolder:'Choose a session or start a new one',matchOnDescription:true,matchOnDetail:true});
+  if(!selected)return;
+  if(selected.sessionAction==='new'){await runtime.startThread(currentWorkspaceDirectory());return;}
+  const thread=selected.thread;if(!thread)return;
+  const action=await vscode.window.showQuickPick(['Resume','Rename locally','Archive'] as const,{title:sessionDisplayName(thread,aliases),placeHolder:'Choose an explicit session action'});
+  if(!action)return;
+  if(action==='Resume'){await runtime.resumeThread(thread.id,currentWorkspaceDirectory());return;}
+  if(action==='Rename locally'){
+    const name=await vscode.window.showInputBox({title:'Rename Codex session locally',value:aliases[thread.id]??'',prompt:'Stored only in this workspace. Clear the field to restore the server preview.'});
+    if(name!==undefined)await store.rename(workspaceKey,thread.id,name);
+    return;
+  }
+  const confirmation=await vscode.window.showWarningMessage(`Archive “${sessionDisplayName(thread,aliases)}”?`,'Archive');
+  if(confirmation==='Archive'){await browser.archive(thread.id);await store.forget(workspaceKey,thread.id);}
+}
 function findSuggestion(review:CouncilReview,suggestionId:string):CouncilSuggestion|undefined{for(const role of review.roles){const suggestion=role.suggestions.find((candidate)=>candidate.id===suggestionId);if(suggestion)return suggestion;}return undefined;}
 async function openFolderFromCouncil():Promise<void>{const selected=await vscode.window.showOpenDialog({canSelectFiles:false,canSelectFolders:true,canSelectMany:false,openLabel:'Open folder',title:'Open a project for Pets Council'});const folder=selected?.[0];if(folder)await vscode.commands.executeCommand('vscode.openFolder',folder);}
 function currentWorkspaceDirectory():string|undefined{const activeUri=vscode.window.activeTextEditor?.document.uri,activeFolder=activeUri?vscode.workspace.getWorkspaceFolder(activeUri):undefined;return activeFolder?.uri.fsPath??vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;}

@@ -3,8 +3,8 @@ import test from 'node:test';
 import type { CouncilReview, CouncilReviewState, CouncilTurn } from '../domain';
 import { findCouncilTimelineSuggestion, upsertCouncilTurnReview } from './reviewTimeline';
 
-const turn=(turnId:string):CouncilTurn=>({turnId,userMessage:`Question ${turnId}`,assistantResponse:`Answer ${turnId}`,capture:{capturedAt:new Date(0).toISOString(),warnings:[]},workspace:{name:'demo'},runtime:{source:'codex',threadId:'thread-1',turnId}});
-const review=(turnId:string,title:string):CouncilReview=>({turnId,roles:[{role:'architect',suggestions:[{id:`suggestion-${turnId}`,role:'architect',title,rationale:'Why',prompt:'Do it'}]},{role:'guardian',suggestions:[]},{role:'strategist',suggestions:[]},{role:'notetaker',suggestions:[]}]});
+const turn=(turnId:string):CouncilTurn=>({turnId,userMessage:`Question ${turnId}`,assistantResponse:`Answer ${turnId}`,capture:{mode:'live',capturedAt:new Date(0).toISOString(),warnings:[]},workspace:{name:'demo'},runtime:{source:'codex',threadId:'thread-1',turnId}});
+const review=(turnId:string,title:string):CouncilReview=>({turnId,roles:[{role:'architect',suggestions:[{id:`suggestion-${turnId}`,role:'architect',title,rationale:'Why',prompt:'Do it',actionLabel:'Use in Codex'}]},{role:'guardian',suggestions:[]},{role:'strategist',suggestions:[]},{role:'notetaker',suggestions:[]}]});
 const state=(turnId:string):CouncilReviewState=>({phase:'ready',provider:'codex',message:'Done',turnId});
 
 test('replaces the review for the same Codex turn',()=>{const first={turn:turn('1'),review:review('1','Old'),state:state('1')};const second={turn:turn('1'),review:review('1','New'),state:state('1')};const result=upsertCouncilTurnReview(upsertCouncilTurnReview([],first),second);assert.equal(result.length,1);assert.equal(result[0]?.review.roles[0]?.suggestions[0]?.title,'New');});
