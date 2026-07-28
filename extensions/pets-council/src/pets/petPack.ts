@@ -1,5 +1,6 @@
 import type { CouncilReview, CouncilReviewState, CouncilRoleId } from '../domain';
 import type { CodexRuntimeStatus } from '../runtime/types';
+import { canonicalPetArtwork, type CanonicalPetArtwork } from './builtinArtwork';
 
 export type PetVisualState = 'idle'|'thinking'|'suggestion'|'silent'|'approval'|'error';
 export type PetMotionPreference = 'system'|'full'|'reduced';
@@ -15,22 +16,28 @@ export type PetAtlas = Readonly<{
   rows:number;
   states:Readonly<Record<PetVisualState,PetAtlasCell>>;
 }>;
-export type PetDefinition = Readonly<{ id:string;name:string;glyph:string;description:string;atlas?:PetAtlas }>;
+export type PetArtworkMetadata = Readonly<{
+  tier:'canonical';
+  version:number;
+  license:string;
+  attribution:string;
+}>;
+export type PetDefinition = Readonly<{ id:string;name:string;glyph:string;description:string;atlas?:PetAtlas;artwork?:PetArtworkMetadata }>;
 export type PetRoleAssignment = Readonly<{ role:CouncilRoleId;petId:string;anchor?:PetAnchor }>;
 export type PetPackManifest = Readonly<{ schemaVersion:1;id:string;name:string;version:string;pets:readonly PetDefinition[];assignments:readonly PetRoleAssignment[] }>;
-export type PetSnapshot = Readonly<{ role:CouncilRoleId;petId:string;name:string;glyph:string;state:PetVisualState;suggestionCount:number;anchor:PetAnchor;atlas?:PetAtlas }>;
+export type PetSnapshot = Readonly<{ role:CouncilRoleId;petId:string;name:string;glyph:string;state:PetVisualState;suggestionCount:number;anchor:PetAnchor;atlas?:PetAtlas;artwork?:PetArtworkMetadata }>;
 
 const STATE_CELLS:Readonly<Record<PetVisualState,PetAtlasCell>>={
   idle:{column:0,row:0},thinking:{column:1,row:0},suggestion:{column:2,row:0},silent:{column:3,row:0},approval:{column:4,row:0},error:{column:5,row:0}
 };
 
 export const BUILTIN_PET_PACK: PetPackManifest = {
-  schemaVersion:1,id:'pets-council.builtin',name:'Built-in Council Companions',version:'2.0.0',
+  schemaVersion:1,id:'pets-council.builtin',name:'Built-in Council Companions',version:'3.0.0',
   pets:[
-    builtinPet('orbital','Orbital','🪐','A curious builder who turns goals into concrete slices.','#6f8cff'),
-    builtinPet('mono','Mono','🛡️','A vigilant guardian who watches risk and permissions.','#71c7a8'),
-    builtinPet('sprout','Sprout','🌱','A patient strategist who keeps scope and sequence healthy.','#9acb63'),
-    builtinPet('hibou','Hibou','🦉','The Greffier who preserves provenance and durable decisions.','#d6a65b')
+    builtinPet('orbital','Orbital','🪐','A curious builder who turns goals into concrete slices.'),
+    builtinPet('mono','Mono','🛡️','A vigilant guardian who watches risk and permissions.'),
+    builtinPet('sprout','Sprout','🌱','A patient strategist who keeps scope and sequence healthy.'),
+    builtinPet('hibou','Hibou','🦉','The Greffier who preserves provenance and durable decisions.')
   ],
   assignments:[
     {role:'architect',petId:'orbital',anchor:'editor'},
@@ -47,7 +54,7 @@ export function buildPetSnapshots(review:CouncilReview,council:CouncilReviewStat
     const pet=definitions.get(assignment.petId);if(!pet)throw new Error(`Pet Pack ${manifest.id} references missing pet ${assignment.petId}.`);
     const suggestionCount=reviews.get(assignment.role)?.suggestions.length??0;
     const state=resolveState(assignment.role,suggestionCount,council,runtime);
-    return {role:assignment.role,petId:pet.id,name:pet.name,glyph:pet.glyph,suggestionCount,state,anchor:resolveAnchor(assignment,state),atlas:pet.atlas};
+    return {role:assignment.role,petId:pet.id,name:pet.name,glyph:pet.glyph,suggestionCount,state,anchor:resolveAnchor(assignment,state),atlas:pet.atlas,artwork:pet.artwork};
   });
 }
 
@@ -59,6 +66,7 @@ export function validatePetPack(manifest:PetPackManifest):readonly string[]{
   for(const pet of manifest.pets){
     if(petIds.has(pet.id))errors.push(`Duplicate pet id: ${pet.id}.`);petIds.add(pet.id);
     if(pet.atlas)errors.push(...validateAtlas(pet.id,pet.atlas));
+    if(pet.artwork)errors.push(...validateArtwork(pet.id,pet.artwork));
   }
   for(const assignment of manifest.assignments){if(!petIds.has(assignment.petId))errors.push(`Assignment references unknown pet: ${assignment.petId}.`);if(roles.has(assignment.role))errors.push(`Role assigned more than once: ${assignment.role}.`);roles.add(assignment.role);}
   return errors;
@@ -78,19 +86,13 @@ function resolveAnchor(assignment:PetRoleAssignment,state:PetVisualState):PetAnc
   return assignment.anchor??({architect:'editor',guardian:'terminal',strategist:'sidebar',notetaker:'memory'} as const)[assignment.role];
 }
 
-function builtinPet(id:string,name:string,glyph:string,description:string,accent:string):PetDefinition{
-  return {id,name,glyph,description,atlas:{format:'strip-v1',dataUri:createBuiltinAtlas(name,glyph,accent),cellWidth:64,cellHeight:64,columns:6,rows:1,states:STATE_CELLS}};
-}
-
-function createBuiltinAtlas(name:string,glyph:string,accent:string):string{
-  const states=['idle','thinking','suggestion','silent','approval','error'];
-  const cells=states.map((state,index)=>{
-    const x=index*64,opacity=state==='silent'?.48:1;
-    const marker=state==='approval'?'!':state==='error'?'×':state==='suggestion'?'•':'';
-    return `<g transform="translate(${x} 0)" opacity="${opacity}"><rect x="5" y="7" width="54" height="50" rx="17" fill="${accent}" fill-opacity=".18" stroke="${accent}" stroke-width="2"/><text x="32" y="42" text-anchor="middle" font-size="29">${escapeXml(glyph)}</text>${marker?`<circle cx="51" cy="13" r="8" fill="${accent}"/><text x="51" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="white">${marker}</text>`:''}<title>${escapeXml(name)} ${state}</title></g>`;
-  }).join('');
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="384" height="64" viewBox="0 0 384 64">${cells}</svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+function builtinPet(id:CanonicalPetArtwork['id'],name:string,glyph:string,description:string):PetDefinition{
+  const artwork=canonicalPetArtwork(id);
+  return {
+    id,name,glyph,description,
+    atlas:{format:'strip-v1',dataUri:artwork.dataUri,cellWidth:96,cellHeight:96,columns:6,rows:1,states:STATE_CELLS},
+    artwork:{tier:'canonical',version:artwork.version,license:artwork.license,attribution:artwork.attribution}
+  };
 }
 
 function validateAtlas(petId:string,atlas:PetAtlas):readonly string[]{
@@ -103,4 +105,11 @@ function validateAtlas(petId:string,atlas:PetAtlas):readonly string[]{
   return errors;
 }
 
-function escapeXml(value:string):string{return value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&apos;');}
+function validateArtwork(petId:string,artwork:PetArtworkMetadata):readonly string[]{
+  const errors:string[]=[];
+  if(artwork.tier!=='canonical')errors.push(`Pet ${petId} artwork tier must be canonical.`);
+  if(!Number.isInteger(artwork.version)||artwork.version<1)errors.push(`Pet ${petId} artwork version must be a positive integer.`);
+  if(!artwork.license.trim())errors.push(`Pet ${petId} artwork license is required.`);
+  if(!artwork.attribution.trim())errors.push(`Pet ${petId} artwork attribution is required.`);
+  return errors;
+}
