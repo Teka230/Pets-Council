@@ -4,6 +4,8 @@ import { CodexCouncilProvider, DeterministicCouncilProvider, emptyReviewForState
 import type { CouncilReview, CouncilReviewState, CouncilRoleId, CouncilSuggestion, CouncilTurn } from './domain';
 import { SharedContextGraphStore } from './memory/contextGraphStore';
 import { SuggestionUsageSignalStore, type SuggestionUsageAction } from './memory/usageSignalStore';
+import { openProductDiagnostics } from './onboarding/diagnostics';
+import { offerFirstRunOnboarding, openOnboarding } from './onboarding/onboarding';
 import { buildPetSnapshots, type PetMotionPreference } from './pets/petPack';
 import { applyPetPlacements, normalizePetPlacement } from './pets/placement';
 import { PetPlacementStore } from './pets/placementStore';
@@ -33,7 +35,9 @@ export function activate(context:vscode.ExtensionContext):void{
   const persistenceSubscription=runtime.onDidChange((status)=>{const threadId=status.thread.thread?.id;if(status.thread.phase!=='ready'||!threadId||threadId===persistedThreadId)return;persistedThreadId=threadId;void sessionStore.save(sessionKey,threadId).then((candidate)=>runtime.setResumeCandidate(candidate));});
   const workspaceSubscription=vscode.workspace.onDidChangeWorkspaceFolders(()=>{if(runtime.status.thread.phase==='ready')return;sessionKey=currentWorkspaceSessionKey();const candidate=sessionStore.load(sessionKey);persistedThreadId=candidate?.threadId;runtime.setResumeCandidate(candidate);});
   const commands=[
-    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>showCouncilPanel(runtime,graphStore,usageStore,placementStore,nativeOverlay,()=>sessionKey)),
+    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>{void offerFirstRunOnboarding(context);showCouncilPanel(runtime,graphStore,usageStore,placementStore,nativeOverlay,()=>sessionKey);}),
+    vscode.commands.registerCommand('petsCouncil.openOnboarding',()=>openOnboarding()),
+    vscode.commands.registerCommand('petsCouncil.runDiagnostics',()=>openProductDiagnostics(readConfiguredCodexBinary())),
     vscode.commands.registerCommand('petsCouncil.openContextGraph',()=>graphStore.open()),
     vscode.commands.registerCommand('petsCouncil.addOpenQuestion',()=>graphStore.addOpenQuestion()),
     vscode.commands.registerCommand('petsCouncil.resolveOpenQuestion',()=>graphStore.resolveOpenQuestion()),
