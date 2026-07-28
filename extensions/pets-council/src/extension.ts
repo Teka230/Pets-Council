@@ -18,8 +18,9 @@ type ValueMessage=Readonly<{type:'copyPrompt'|'startCodexTurn';value:string}>;
 type ApprovalMessage=Readonly<{type:'respondCodexApproval';decision:CodexApprovalDecision}>;
 type SaveSuggestionMessage=Readonly<{type:'saveCouncilSuggestion';suggestionId:string}>;
 type UsageSignalMessage=Readonly<{type:'recordSuggestionSignal';suggestionId:string;action:SuggestionUsageAction}>;
+type ModelSelectionMessage=Readonly<{type:'setCodexModel';model:string;modelProvider?:string}|{type:'setCodexEffort';effort?:string}>;
 type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'}>;
-type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|SimpleMessage;
+type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|ModelSelectionMessage|SimpleMessage;
 
 export function activate(context:vscode.ExtensionContext):void{
   const runtime=new CodexRuntimeService(resolveCodexBinary(readConfiguredCodexBinary()),createStdioCodexTransport);
@@ -96,6 +97,8 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
       case'resumeCodexThread':await runtime.resumeThread(undefined,currentWorkspaceDirectory());return;
       case'startCodexTurn':await runtime.startTurn(message.value,currentWorkspaceDirectory());return;
       case'interruptCodexTurn':await runtime.interruptTurn();return;
+      case'setCodexModel':runtime.setModelSelection({model:message.model,modelProvider:message.modelProvider});return;
+      case'setCodexEffort':runtime.setModelSelection({effort:message.effort});return;
       case'respondCodexApproval':runtime.respondApproval(message.decision);return;
       case'saveCouncilSuggestion':await saveSuggestion(message.suggestionId);return;
       case'recordSuggestionSignal':await recordUsage(message.suggestionId,message.action);return;
@@ -115,8 +118,9 @@ function currentWorkspaceSessionKey():string{return createWorkspaceSessionKey((v
 function readConfiguredCodexBinary():string|undefined{return vscode.workspace.getConfiguration('petsCouncil').get<string>('codexBinary');}
 function readPetMotionPreference():PetMotionPreference{return vscode.workspace.getConfiguration('petsCouncil').get<PetMotionPreference>('petMotion','system');}
 function isCouncilWebviewMessage(message:unknown):message is CouncilWebviewMessage{
-  if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown};
+  if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown;model?:unknown;modelProvider?:unknown;effort?:unknown};
   if(['refreshContext','openFolder','connectCodex','disconnectCodex','startCodexThread','resumeCodexThread','interruptCodexTurn','openContextGraph','openUsageSignals'].includes(String(candidate.type)))return true;
+  if((candidate.type==='setCodexModel'&&typeof candidate.model==='string')||(candidate.type==='setCodexEffort'&&(candidate.effort===undefined||typeof candidate.effort==='string')))return true;
   if((candidate.type==='copyPrompt'||candidate.type==='startCodexTurn')&&typeof candidate.value==='string')return true;
   if(candidate.type==='saveCouncilSuggestion'&&typeof candidate.suggestionId==='string')return true;
   if(candidate.type==='recordSuggestionSignal'&&typeof candidate.suggestionId==='string'&&['accepted','dismissed','snoozed'].includes(String(candidate.action)))return true;

@@ -1,4 +1,8 @@
 import { CodexAppServerClient } from './client';
+import {
+  DEFAULT_CODEX_EFFORT, DEFAULT_CODEX_MODEL, parseTokenUsageNotification, resolveModelSelection,
+  type CodexModelSelection
+} from './modelSelection';
 import type {
   CodexApprovalDecision, CodexApprovalRequest, CodexResumeCandidate, CodexRuntimeStatus,
   CodexThreadStatus, CodexTransportFactory, CodexTurnStatus, JsonRpcNotification,
@@ -40,16 +44,31 @@ export class CodexRuntimeService {
     const sequence = ++this.connectionSequence;
     const binary = this.statusValue.binary;
     const resumeCandidate = this.statusValue.resumeCandidate;
-    this.set({ phase:'connecting',binary,message:'Starting codex app-server and negotiating the initialize handshake…',thread:noThread(),turn:idleTurn(),resumeCandidate });
+    this.set({ phase:'connecting',binary,message:'Starting codex app-server and negotiating the initialize handshake…',models:[],thread:noThread(),turn:idleTurn(),resumeCandidate });
     try {
       const client = await CodexAppServerClient.connect(this.factory, binary);
       if (sequence !== this.connectionSequence) { client.dispose(); return; }
       this.replaceClient(client);
-      this.set({ phase:'ready',binary,message:'Connected. Choose whether to start a new session or resume the saved one.',server:client.serverInfo,thread:noThread(),turn:idleTurn(),resumeCandidate });
+      const catalog = await this.loadModelCatalog(client);
+      if (sequence !== this.connectionSequence) { client.dispose(); return; }
+      this.set({
+        phase:'ready',
+        binary,
+        message:catalog.models.length
+          ? 'Connected. Choose a model and effort, then start or resume a session.'
+          : 'Connected. Choose whether to start a new session or resume the saved one.',
+        server:client.serverInfo,
+        models:catalog.models,
+        modelSelection:catalog.selection,
+        tokenUsage:undefined,
+        thread:noThread(),
+        turn:idleTurn(),
+        resumeCandidate
+      });
     } catch (error) {
       if (sequence !== this.connectionSequence) return;
       this.replaceClient(undefined);
-      this.set({ phase:'error',binary,message:normalize(error),thread:noThread(),turn:idleTurn(),resumeCandidate });
+      this.set({ phase:'error',binary,message:normalize(error),models:[],thread:noThread(),turn:idleTurn(),resumeCandidate });
     }
   }
 
@@ -59,7 +78,7 @@ export class CodexRuntimeService {
     const sequence = ++this.threadSequence; ++this.turnSequence;
     this.set({ ...this.statusValue,thread:{phase:'starting',message:'Creating a new Codex thread for this workspace…'},turn:idleTurn(),approval:undefined });
     try {
-      const thread = await client.startThread(cwd);
+      const thread = await client.startThread(cwd, this.statusValue.modelSelection);
       if (!this.isCurrentThreadOperation(client, sequence)) return;
       this.set({ ...this.statusValue,thread:{phase:'ready',message:'New thread ready. No turn has been started and no prompt has been sent.',thread},turn:idleTurn(),approval:undefined,resumeCandidate:{threadId:thread.id,savedAt:Date.now()} });
     } catch (error) {
@@ -75,7 +94,7 @@ export class CodexRuntimeService {
     const sequence = ++this.threadSequence; ++this.turnSequence;
     this.set({ ...this.statusValue,thread:{phase:'starting',message:'Resuming the saved Codex thread…'},turn:idleTurn(),approval:undefined });
     try {
-      const thread = await client.resumeThread(candidate, cwd);
+      const thread = await client.resumeThread(candidate, cwd, this.statusValue.modelSelection);
       if (!this.isCurrentThreadOperation(client, sequence)) return;
       const restored = thread.lastCompletedTurn;
       this.set({
@@ -102,7 +121,7 @@ export class CodexRuntimeService {
     const sequence = ++this.turnSequence;
     this.set({ ...this.statusValue,turn:{phase:'starting',message:'Sending the prompt to Codex…',userMessage:text,assistantMessage:''},approval:undefined });
     try {
-      const turnId = await client.startTurn(thread.id, text, cwd);
+      const turnId = await client.startTurn(thread.id, text, cwd, this.statusValue.modelSelection);
       if (sequence !== this.turnSequence || this.client !== client || this.statusValue.phase !== 'ready') return;
       const current = this.statusValue.turn;
       if (current.turnId === turnId && (current.phase === 'completed' || current.phase === 'error')) return;
@@ -116,7 +135,35 @@ export class CodexRuntimeService {
     if (this.statusValue.phase !== 'ready' || !this.client) throw new Error('Connect Codex before requesting an intelligent Council review.');
     if (running(this.statusValue.turn)) throw new Error('Wait for the primary Codex turn to complete before the Council reviews it.');
     if (this.statusValue.approval) throw new Error('Resolve the pending approval before the Council review starts.');
-    return this.client.runCouncilReview(prompt, outputSchema, cwd);
+    return this.client.runCouncilReview(prompt, outputSchema, cwd, this.statusValue.modelSelection);
+  }
+
+  setModelSelection(selection: Partial<CodexModelSelection>): void {
+    if (this.statusValue.phase !== 'ready' || !this.statusValue.models.length) {
+      return;
+    }
+    const resolved = resolveModelSelection(this.statusValue.models, {
+      ...this.statusValue.modelSelection,
+      ...selection
+    });
+    if (!resolved) {
+      return;
+    }
+    const unchanged =
+      resolved.model === this.statusValue.modelSelection?.model &&
+      resolved.modelProvider === this.statusValue.modelSelection?.modelProvider &&
+      resolved.effort === this.statusValue.modelSelection?.effort;
+    if (unchanged) {
+      return;
+    }
+    const threadReady = this.statusValue.thread.phase === 'ready';
+    this.set({
+      ...this.statusValue,
+      modelSelection: resolved,
+      message: threadReady
+        ? 'Model and effort updated. Effort applies to the next turn; start a new session to bind a different model.'
+        : 'Model and effort updated. They will apply to the next session or turn.'
+    });
   }
 
   async interruptTurn(): Promise<void> {
@@ -149,7 +196,7 @@ export class CodexRuntimeService {
   private replaceClient(client:CodexAppServerClient|undefined):void{
     this.closeSub?.dispose();this.notificationSub?.dispose();this.requestSub?.dispose();this.closeSub=this.notificationSub=this.requestSub=undefined;
     const previous=this.client;this.client=client;previous?.dispose();if(!client)return;
-    this.closeSub=client.onDidClose((reason)=>{if(this.client!==client)return;this.client=undefined;this.closeSub?.dispose();this.notificationSub?.dispose();this.requestSub?.dispose();++this.threadSequence;++this.turnSequence;this.set({phase:'error',binary:this.statusValue.binary,message:reason,thread:noThread(),turn:idleTurn(),resumeCandidate:this.statusValue.resumeCandidate});});
+    this.closeSub=client.onDidClose((reason)=>{if(this.client!==client)return;this.client=undefined;this.closeSub?.dispose();this.notificationSub?.dispose();this.requestSub?.dispose();++this.threadSequence;++this.turnSequence;this.set({phase:'error',binary:this.statusValue.binary,message:reason,models:this.statusValue.models,modelSelection:this.statusValue.modelSelection,tokenUsage:this.statusValue.tokenUsage,thread:noThread(),turn:idleTurn(),resumeCandidate:this.statusValue.resumeCandidate});});
     this.notificationSub=client.onNotification((value)=>{if(this.client===client)this.handleNotification(value);});
     this.requestSub=client.onRequest((value)=>{if(this.client===client)this.handleRequest(value);});
   }
@@ -165,6 +212,10 @@ export class CodexRuntimeService {
   private handleNotification(notification:JsonRpcNotification):void{
     const params=objectValue(notification.params);if(!params)return;
     const activeThread=this.statusValue.thread.thread?.id,notificationThread=optionalString(params.threadId);if(activeThread&&notificationThread&&notificationThread!==activeThread)return;
+    if(notification.method==='thread/tokenUsage/updated'){
+      const usage=parseTokenUsageNotification(params);if(!usage)return;
+      this.set({...this.statusValue,tokenUsage:{...this.statusValue.tokenUsage,...usage}});return;
+    }
     if(notification.method==='turn/started'){
       const turn=objectValue(params.turn),turnId=optionalString(turn?.id);if(!turnId)return;
       this.setTurn({...this.statusValue.turn,phase:'streaming',message:'Codex is responding…',turnId,startedAt:numberValue(turn?.startedAt)??Date.now()/1000,assistantMessage:this.statusValue.turn.assistantMessage??''});return;
@@ -183,6 +234,25 @@ export class CodexRuntimeService {
       this.set({...this.statusValue,approval:undefined,turn:{...this.statusValue.turn,phase:failed?'error':'completed',message:failed?optionalString(objectValue(turn?.error)?.message)??'The Codex turn failed.':'Codex completed the turn.',turnId:this.statusValue.turn.turnId??turnId,completedAt:numberValue(turn?.completedAt)??Date.now()/1000}});
     }
   }
+  private async loadModelCatalog(client:CodexAppServerClient):Promise<{models:CodexRuntimeStatus['models'];selection:CodexModelSelection|undefined}>{
+    try{
+      const [models,config]=await Promise.all([client.listModels(),client.readConfig()]);
+      // Product default is always gpt-5.5 / medium when available; Codex config only fills gaps.
+      return {
+        models,
+        selection: resolveModelSelection(models, {
+          ...config,
+          model: DEFAULT_CODEX_MODEL,
+          effort: DEFAULT_CODEX_EFFORT
+        })
+      };
+    }catch{
+      return {
+        models: [],
+        selection: { model: DEFAULT_CODEX_MODEL, effort: DEFAULT_CODEX_EFFORT }
+      };
+    }
+  }
   private setThread(thread:CodexThreadStatus):void{this.set({...this.statusValue,thread});}
   private setTurn(turn:CodexTurnStatus):void{this.set({...this.statusValue,turn});}
   private set(status:CodexRuntimeStatus):void{this.statusValue=status;for(const listener of this.listeners)listener(status);}
@@ -193,7 +263,7 @@ function parseApproval(request:JsonRpcServerRequest,params:Record<string,unknown
   return{requestId:request.id,kind:request.method.includes('commandExecution')?'commandExecution':'fileChange',threadId,turnId,itemId,reason:optionalString(params.reason),command:optionalString(params.command),cwd:optionalString(params.cwd),grantRoot:optionalString(params.grantRoot),startedAtMs:numberValue(params.startedAtMs)};
 }
 export function resolveCodexBinary(configured:string|undefined,environment:NodeJS.ProcessEnv=process.env):string{return configured?.trim()||environment.CODEX_BIN?.trim()||'codex';}
-function disconnected(binary:string):CodexRuntimeStatus{return{phase:'disconnected',binary,message:'Disconnected. Connecting is always an explicit user action.',thread:noThread(),turn:idleTurn()};}
+function disconnected(binary:string):CodexRuntimeStatus{return{phase:'disconnected',binary,message:'Disconnected. Connecting is always an explicit user action.',models:[],thread:noThread(),turn:idleTurn()};}
 function noThread():CodexThreadStatus{return{phase:'none',message:'No Codex thread exists for this runtime connection.'};}
 function idleTurn():CodexTurnStatus{return{phase:'idle',message:'No Codex turn has been started in this session.'};}
 function running(turn:CodexTurnStatus):boolean{return turn.phase==='starting'||turn.phase==='streaming';}

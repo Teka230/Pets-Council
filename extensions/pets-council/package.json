@@ -49,7 +49,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/memory/usageSignalStore.test.js dist/pets/petPack.test.js dist/runtime/jsonl.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
+    "test": "npm run build && node --test dist/context.test.js dist/evidence.test.js dist/mockCouncil.test.js dist/webview.test.js dist/council/provider.test.js dist/memory/contextGraph.test.js dist/memory/usageSignalStore.test.js dist/pets/petPack.test.js dist/runtime/jsonl.test.js dist/runtime/modelSelection.test.js dist/runtime/client.test.js dist/runtime/service.test.js dist/runtime/councilBridge.test.js dist/runtime/sessionStore.test.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

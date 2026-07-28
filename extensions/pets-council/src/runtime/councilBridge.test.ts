@@ -8,6 +8,7 @@ const COMPLETED: CodexRuntimeStatus = {
   phase: 'ready',
   binary: 'codex',
   message: 'Connected.',
+  models: [],
   thread: {
     phase: 'ready',
     message: 'Thread ready.',

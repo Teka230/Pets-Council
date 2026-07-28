@@ -3,6 +3,10 @@ import type {
   CodexTransportFactory, JsonRpcId, JsonRpcNotification, JsonRpcResponse,
   JsonRpcServerRequest, RuntimeDisposable
 } from './types';
+import {
+  buildThreadModelParams, buildTurnEffortParams, normalizeModelList, readConfigSelection,
+  type CodexModelDescriptor, type CodexModelSelection
+} from './modelSelection';
 
 type Pending = Readonly<{ resolve(value: unknown): void; reject(error: Error): void; timeout: NodeJS.Timeout }>;
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -40,17 +44,32 @@ export class CodexAppServerClient {
     });
   }
 
-  async startThread(cwd?: string): Promise<CodexThreadInfo> {return parseThread(await this.request('thread/start', { ...(cwd ? { cwd } : {}), approvalsReviewer: 'user' }));}
-  async resumeThread(threadId: string, cwd?: string): Promise<CodexThreadInfo> {return parseThread(await this.request('thread/resume', { threadId, ...(cwd ? { cwd } : {}), approvalsReviewer: 'user' }));}
-  async startTurn(threadId: string, text: string, cwd?: string): Promise<string> {return parseTurnId(await this.request('turn/start', {threadId, input: [{ type: 'text', text }], ...(cwd ? { cwd } : {}), approvalsReviewer: 'user'}));}
+  async startThread(cwd?: string, selection?: CodexModelSelection): Promise<CodexThreadInfo> {
+    return parseThread(await this.request('thread/start', { ...(cwd ? { cwd } : {}), approvalsReviewer: 'user', ...buildThreadModelParams(selection) }));
+  }
+  async resumeThread(threadId: string, cwd?: string, selection?: CodexModelSelection): Promise<CodexThreadInfo> {
+    return parseThread(await this.request('thread/resume', { threadId, ...(cwd ? { cwd } : {}), approvalsReviewer: 'user', ...buildThreadModelParams(selection) }));
+  }
+  async startTurn(threadId: string, text: string, cwd?: string, selection?: CodexModelSelection): Promise<string> {
+    return parseTurnId(await this.request('turn/start', {
+      threadId,
+      input: [{ type: 'text', text }],
+      ...(cwd ? { cwd } : {}),
+      approvalsReviewer: 'user',
+      ...buildTurnEffortParams(selection)
+    }));
+  }
+  async listModels(): Promise<CodexModelDescriptor[]> { return normalizeModelList(await this.request('model/list')); }
+  async readConfig(): Promise<Partial<CodexModelSelection>> { return readConfigSelection(await this.request('config/read')); }
 
-  async runCouncilReview(prompt: string, outputSchema: unknown, cwd?: string, timeoutMs = COUNCIL_TIMEOUT_MS): Promise<string> {
+  async runCouncilReview(prompt: string, outputSchema: unknown, cwd?: string, selection?: CodexModelSelection, timeoutMs = COUNCIL_TIMEOUT_MS): Promise<string> {
     const thread = parseThread(await this.request('thread/start', {
       ...(cwd ? { cwd } : {}),approvalPolicy: 'never', approvalsReviewer: 'user', sandbox: 'read-only', ephemeral: true,
       serviceName: 'pets-council-review',
+      ...buildThreadModelParams(selection),
       developerInstructions: 'You are the consultative Pets Council review runtime. Do not run commands, modify files, request permissions, or start subagents. Return only the JSON object required by the provided output schema.'
     }, timeoutMs));
-    return this.runStructuredTurn(thread.id, prompt, outputSchema, cwd, timeoutMs);
+    return this.runStructuredTurn(thread.id, prompt, outputSchema, cwd, selection, timeoutMs);
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {await this.request('turn/interrupt', { threadId, turnId });}
@@ -60,7 +79,7 @@ export class CodexAppServerClient {
   onDidClose(listener: (reason: string) => void): RuntimeDisposable { this.closes.add(listener); return disposable(() => this.closes.delete(listener)); }
   dispose(): void { this.close('Disconnected by Pets Council.', true); }
 
-  private runStructuredTurn(threadId: string, prompt: string, outputSchema: unknown, cwd: string | undefined, timeoutMs: number): Promise<string> {
+  private runStructuredTurn(threadId: string, prompt: string, outputSchema: unknown, cwd: string | undefined, selection: CodexModelSelection | undefined, timeoutMs: number): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let turnId: string | undefined,assistantText = '',settled = false,timeout: NodeJS.Timeout;
       const cleanup=():void=>{clearTimeout(timeout);subscription.dispose();};
@@ -75,7 +94,7 @@ export class CodexAppServerClient {
         else if(notification.method==='turn/completed'){const turn=objectOptional(params.turn),error=objectOptional(turn?.error);if(optional(turn?.status)==='failed'||error)fail(new Error(optional(error?.message)??'The structured Council review failed.'));else succeed();}
       });
       timeout=setTimeout(()=>fail(new Error('The structured Council review timed out.')),timeoutMs);
-      void this.request('turn/start',{threadId,input:[{type:'text',text:prompt}],...(cwd?{cwd}:{}),approvalPolicy:'never',approvalsReviewer:'user',outputSchema},timeoutMs).then((result)=>{turnId=parseTurnId(result);},fail);
+      void this.request('turn/start',{threadId,input:[{type:'text',text:prompt}],...(cwd?{cwd}:{}),approvalPolicy:'never',approvalsReviewer:'user',outputSchema,...buildTurnEffortParams(selection)},timeoutMs).then((result)=>{turnId=parseTurnId(result);},fail);
     });
   }
 
@@ -99,7 +118,7 @@ class Bootstrap {
 }
 
 function parseInitialize(value:unknown):CodexInitializeResult{const v=object(value,'initialize result');return{userAgent:optional(v.userAgent),codexHome:optional(v.codexHome),platformFamily:optional(v.platformFamily),platformOs:optional(v.platformOs)};}
-export function parseThread(value:unknown):CodexThreadInfo{const response=object(value,'thread response'),thread=object(response.thread,'thread');return{id:required(thread.id,'thread.id'),sessionId:optional(thread.sessionId),preview:optional(thread.preview),cwd:optional(response.cwd)??optional(thread.cwd),model:optional(response.model),modelProvider:optional(response.modelProvider)??optional(thread.modelProvider),approvalPolicy:stringLike(response.approvalPolicy),approvalsReviewer:stringLike(response.approvalsReviewer),lastCompletedTurn:extractLastCompletedTurn(thread.turns)};}
+export function parseThread(value:unknown):CodexThreadInfo{const response=object(value,'thread response'),thread=object(response.thread,'thread');return{id:required(thread.id,'thread.id'),sessionId:optional(thread.sessionId),preview:optional(thread.preview),cwd:optional(response.cwd)??optional(thread.cwd),model:optional(response.model),modelProvider:optional(response.modelProvider)??optional(thread.modelProvider),reasoningEffort:optional(response.reasoningEffort)??optional(thread.reasoningEffort),approvalPolicy:stringLike(response.approvalPolicy),approvalsReviewer:stringLike(response.approvalsReviewer),lastCompletedTurn:extractLastCompletedTurn(thread.turns)};}
 function extractLastCompletedTurn(value:unknown):CodexRestoredTurn|undefined{if(!Array.isArray(value))return undefined;for(let index=value.length-1;index>=0;index--){const turn=objectOptional(value[index]);if(!turn||optional(turn.status)!=='completed')continue;const items=Array.isArray(turn.items)?turn.items:[];let user='',assistant='';for(const raw of items){const item=objectOptional(raw);if(!item)continue;if(item.type==='userMessage'&&Array.isArray(item.content)){user=item.content.map(input=>{const value=objectOptional(input);return value?.type==='text'&&typeof value.text==='string'?value.text:'';}).filter(Boolean).join('\n');}if(item.type==='agentMessage'&&typeof item.text==='string')assistant=item.text;}const id=optional(turn.id);if(id&&user.trim()&&assistant.trim())return{turnId:id,userMessage:user.trim(),assistantMessage:assistant.trim(),startedAt:numberValue(turn.startedAt),completedAt:numberValue(turn.completedAt)};}return undefined;}
 function parseTurnId(value:unknown):string{const response=object(value,'turn/start result'),turn=object(response.turn,'turn');return required(turn.id,'turn.id');}
 function object(value:unknown,label:string):Record<string,unknown>{if(typeof value!=='object'||value===null)throw new Error(`Codex app-server returned an invalid ${label}.`);return value as Record<string,unknown>;}
