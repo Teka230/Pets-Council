@@ -10,6 +10,9 @@ import { NativeOverlayBridge } from './pets/nativeOverlayBridge';
 import { buildCouncilTurnFromCompletedCodexTurn } from './runtime/councilBridge';
 import { projectConversationHistory, type ConversationHistoryState } from './runtime/conversationHistory';
 import { CodexRuntimeService, resolveCodexBinary } from './runtime/service';
+import { CodexSessionBrowserService } from './runtime/sessionBrowserService';
+import { CodexSessionBrowserStore } from './runtime/sessionBrowserStore';
+import type { SessionBrowserState } from './runtime/sessionCatalog';
 import { CodexSessionStore, createWorkspaceSessionKey } from './runtime/sessionStore';
 import { createStdioCodexTransport } from './runtime/stdioTransport';
 import type { CodexApprovalDecision } from './runtime/types';
@@ -21,19 +24,20 @@ type ApprovalMessage=Readonly<{type:'respondCodexApproval';decision:CodexApprova
 type SaveSuggestionMessage=Readonly<{type:'saveCouncilSuggestion';suggestionId:string}>;
 type UsageSignalMessage=Readonly<{type:'recordSuggestionSignal';suggestionId:string;action:SuggestionUsageAction}>;
 type ModelSelectionMessage=Readonly<{type:'setCodexModel';model:string;modelProvider?:string}|{type:'setCodexEffort';effort?:string}>;
-type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'}>;
-type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|ModelSelectionMessage|SimpleMessage;
+type SessionMessage=Readonly<{type:'resumeCodexSession'|'renameCodexSession'|'archiveCodexSession';threadId:string}>;
+type SimpleMessage=Readonly<{type:'refreshContext'|'openFolder'|'connectCodex'|'disconnectCodex'|'startCodexThread'|'resumeCodexThread'|'interruptCodexTurn'|'openContextGraph'|'openUsageSignals'|'refreshCodexSessions'}>;
+type CouncilWebviewMessage=ValueMessage|ApprovalMessage|SaveSuggestionMessage|UsageSignalMessage|ModelSelectionMessage|SessionMessage|SimpleMessage;
 
 export function activate(context:vscode.ExtensionContext):void{
   const runtime=new CodexRuntimeService(resolveCodexBinary(readConfiguredCodexBinary()),createStdioCodexTransport);
-  const sessionStore=new CodexSessionStore(context.workspaceState),graphStore=new SharedContextGraphStore(),usageStore=new SuggestionUsageSignalStore(),nativeOverlay=new NativeOverlayBridge();
+  const sessionStore=new CodexSessionStore(context.workspaceState),sessionBrowserStore=new CodexSessionBrowserStore(context.workspaceState),sessionBrowser=new CodexSessionBrowserService(()=>runtime.status.binary,createStdioCodexTransport),graphStore=new SharedContextGraphStore(),usageStore=new SuggestionUsageSignalStore(),nativeOverlay=new NativeOverlayBridge();
   let sessionKey=currentWorkspaceSessionKey(),persistedThreadId=sessionStore.load(sessionKey)?.threadId;
   runtime.setResumeCandidate(sessionStore.load(sessionKey));
 
   const persistenceSubscription=runtime.onDidChange((status)=>{const threadId=status.thread.thread?.id;if(status.thread.phase!=='ready'||!threadId||threadId===persistedThreadId)return;persistedThreadId=threadId;void sessionStore.save(sessionKey,threadId).then((candidate)=>runtime.setResumeCandidate(candidate));});
   const workspaceSubscription=vscode.workspace.onDidChangeWorkspaceFolders(()=>{if(runtime.status.thread.phase==='ready')return;sessionKey=currentWorkspaceSessionKey();const candidate=sessionStore.load(sessionKey);persistedThreadId=candidate?.threadId;runtime.setResumeCandidate(candidate);});
   const commands=[
-    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>showCouncilPanel(runtime,graphStore,usageStore,nativeOverlay)),
+    vscode.commands.registerCommand('petsCouncil.openCouncil',()=>showCouncilPanel(runtime,sessionBrowser,sessionBrowserStore,()=>sessionKey,graphStore,usageStore,nativeOverlay)),
     vscode.commands.registerCommand('petsCouncil.openContextGraph',()=>graphStore.open()),
     vscode.commands.registerCommand('petsCouncil.addOpenQuestion',()=>graphStore.addOpenQuestion()),
     vscode.commands.registerCommand('petsCouncil.resolveOpenQuestion',()=>graphStore.resolveOpenQuestion()),
@@ -50,20 +54,28 @@ export function activate(context:vscode.ExtensionContext):void{
 
 export function deactivate():void{/* ExtensionContext disposes shared services. */}
 
-function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGraphStore,usageStore:SuggestionUsageSignalStore,nativeOverlay:NativeOverlayBridge):void{
+function showCouncilPanel(runtime:CodexRuntimeService,sessionBrowser:CodexSessionBrowserService,sessionBrowserStore:CodexSessionBrowserStore,workspaceKey:()=>string,graphStore:SharedContextGraphStore,usageStore:SuggestionUsageSignalStore,nativeOverlay:NativeOverlayBridge):void{
   const panel=vscode.window.createWebviewPanel('petsCouncil.panel','Pets Council',vscode.ViewColumn.Beside,{enableScripts:true,retainContextWhenHidden:true});
   const deterministic=new DeterministicCouncilProvider(),intelligent=new CodexCouncilProvider(runtime,deterministic);
   let disposed=false,renderSequence=0,reviewSequence=0,currentTurn:CouncilTurn|undefined,currentReview:CouncilReview|undefined,councilState:CouncilReviewState=idleCouncilState(),lastBridgedTurnId:string|undefined;
   let conversationHistory:ConversationHistoryState={turns:[]};
   let reviewTimeline:readonly CouncilTurnReviewEntry[]=[];
+  let sessionBrowserState:SessionBrowserState={phase:'idle',message:'Connect Codex, then refresh workspace sessions.',threads:[],aliases:sessionBrowserStore.loadAliases(workspaceKey())};
 
   const syncConversation=():void=>{conversationHistory=projectConversationHistory(conversationHistory,runtime.status);};
   const renderCurrent=():void=>{
     if(disposed||!currentTurn||!currentReview)return;
     syncConversation();
     const pets=buildPetSnapshots(currentReview,councilState,runtime.status);
-    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,conversationHistory.turns,reviewTimeline,readPetMotionPreference(),createNonce());
+    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,conversationHistory.turns,reviewTimeline,sessionBrowserState,readPetMotionPreference(),createNonce());
     void nativeOverlay.publish({visible:true,companions:pets});
+  };
+  const refreshSessions=async():Promise<void>=>{
+    if(runtime.status.phase!=='ready'){sessionBrowserState={...sessionBrowserState,phase:'error',message:'Connect Codex before listing workspace sessions.'};renderCurrent();return;}
+    sessionBrowserState={...sessionBrowserState,phase:'loading',message:'Loading Codex sessions for this workspace…'};renderCurrent();
+    try{const threads=await sessionBrowser.list(currentWorkspaceDirectory());sessionBrowserState={phase:'ready',message:threads.length?`${threads.length} workspace sessions available.`:'No stored Codex session was found for this workspace.',threads,aliases:sessionBrowserStore.loadAliases(workspaceKey())};}
+    catch(error){sessionBrowserState={...sessionBrowserState,phase:'error',message:error instanceof Error?error.message:String(error)};}
+    renderCurrent();
   };
   const reviewCompletedTurn=async(turn:CouncilTurn):Promise<void>=>{
     const sequence=++reviewSequence;
@@ -100,6 +112,8 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
     const resolved=resolveSuggestion(suggestionId);if(!resolved)return;
     try{await usageStore.record(resolved.turn,resolved.suggestion,action,resolved.provider);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
   };
+  const renameSession=async(threadId:string):Promise<void>=>{const current=sessionBrowserState.aliases[threadId]??'';const value=await vscode.window.showInputBox({title:'Rename Codex session locally',prompt:'This name is stored only in this workspace.',value:current,placeHolder:'Session name'});if(value===undefined)return;const aliases=await sessionBrowserStore.rename(workspaceKey(),threadId,value);sessionBrowserState={...sessionBrowserState,aliases};renderCurrent();};
+  const archiveSession=async(threadId:string):Promise<void>=>{const choice=await vscode.window.showWarningMessage('Archive this Codex session? It will disappear from the default workspace list.','Archive');if(choice!=='Archive')return;await sessionBrowser.archive(threadId);await sessionBrowserStore.forget(workspaceKey(),threadId);await refreshSessions();};
 
   const runtimeSubscription=runtime.onDidChange(()=>{syncConversation();if(!bridgeCompletedTurn())renderCurrent();});
   const messageSubscription=panel.webview.onDidReceiveMessage(async(message:unknown)=>{
@@ -107,10 +121,14 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
     switch(message.type){
       case'refreshContext':await refreshContext();return;
       case'openFolder':await openFolderFromCouncil();return;
-      case'connectCodex':await runtime.connect();return;
+      case'connectCodex':await runtime.connect();await refreshSessions();return;
       case'disconnectCodex':runtime.disconnect();return;
-      case'startCodexThread':await runtime.startThread(currentWorkspaceDirectory());return;
+      case'startCodexThread':await runtime.startThread(currentWorkspaceDirectory());await refreshSessions();return;
       case'resumeCodexThread':await runtime.resumeThread(undefined,currentWorkspaceDirectory());return;
+      case'resumeCodexSession':await runtime.resumeThread(message.threadId,currentWorkspaceDirectory());return;
+      case'renameCodexSession':await renameSession(message.threadId);return;
+      case'archiveCodexSession':await archiveSession(message.threadId);return;
+      case'refreshCodexSessions':await refreshSessions();return;
       case'startCodexTurn':await runtime.startTurn(message.value,currentWorkspaceDirectory());return;
       case'interruptCodexTurn':await runtime.interruptTurn();return;
       case'setCodexModel':runtime.setModelSelection({model:message.model,modelProvider:message.modelProvider});return;
@@ -134,8 +152,9 @@ function currentWorkspaceSessionKey():string{return createWorkspaceSessionKey((v
 function readConfiguredCodexBinary():string|undefined{return vscode.workspace.getConfiguration('petsCouncil').get<string>('codexBinary');}
 function readPetMotionPreference():PetMotionPreference{return vscode.workspace.getConfiguration('petsCouncil').get<PetMotionPreference>('petMotion','system');}
 function isCouncilWebviewMessage(message:unknown):message is CouncilWebviewMessage{
-  if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown;model?:unknown;modelProvider?:unknown;effort?:unknown};
-  if(['refreshContext','openFolder','connectCodex','disconnectCodex','startCodexThread','resumeCodexThread','interruptCodexTurn','openContextGraph','openUsageSignals'].includes(String(candidate.type)))return true;
+  if(typeof message!=='object'||message===null)return false;const candidate=message as{type?:unknown;value?:unknown;decision?:unknown;suggestionId?:unknown;action?:unknown;model?:unknown;modelProvider?:unknown;effort?:unknown;threadId?:unknown};
+  if(['refreshContext','openFolder','connectCodex','disconnectCodex','startCodexThread','resumeCodexThread','interruptCodexTurn','openContextGraph','openUsageSignals','refreshCodexSessions'].includes(String(candidate.type)))return true;
+  if(['resumeCodexSession','renameCodexSession','archiveCodexSession'].includes(String(candidate.type))&&typeof candidate.threadId==='string')return true;
   if((candidate.type==='setCodexModel'&&typeof candidate.model==='string')||(candidate.type==='setCodexEffort'&&(candidate.effort===undefined||typeof candidate.effort==='string')))return true;
   if((candidate.type==='copyPrompt'||candidate.type==='startCodexTurn')&&typeof candidate.value==='string')return true;
   if(candidate.type==='saveCouncilSuggestion'&&typeof candidate.suggestionId==='string')return true;
