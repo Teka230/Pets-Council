@@ -99,6 +99,8 @@
 
 - [x] Persist completed Council reviews across application restarts
 - [x] Anchor Council suggestions to the open workspace, not the Pets Council product
+- [x] Scope Git context to the open workspace folder inside larger repositories
+- [x] Add an explicit Clear Shared Context Graph action
 - [ ] Add external Pet Pack archives and file-backed atlas assets
 - [ ] Add draggable anchor overrides without breaking role defaults
 - [ ] Replace generated built-in atlases with final validated character art

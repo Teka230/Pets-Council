@@ -19,7 +19,8 @@
     "onCommand:petsCouncil.resolveOpenQuestion",
     "onCommand:petsCouncil.queryContextGraph",
     "onCommand:petsCouncil.supersedeDecision",
-    "onCommand:petsCouncil.openUsageSignals"
+    "onCommand:petsCouncil.openUsageSignals",
+    "onCommand:petsCouncil.clearContextGraph"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -31,6 +32,7 @@
       { "command": "petsCouncil.restoreBuiltinPetPack", "title": "Restore Built-in Pet Pack", "category": "Pets Council" },
       { "command": "petsCouncil.openSilenceTuningReport", "title": "Open Local Silence Tuning Report", "category": "Pets Council" },
       { "command": "petsCouncil.openContextGraph", "title": "Open Shared Context Graph", "category": "Pets Council" },
+      { "command": "petsCouncil.clearContextGraph", "title": "Clear Shared Context Graph", "category": "Pets Council" },
       { "command": "petsCouncil.addOpenQuestion", "title": "Add Open Question", "category": "Pets Council" },
       { "command": "petsCouncil.resolveOpenQuestion", "title": "Resolve Open Question", "category": "Pets Council" },
       { "command": "petsCouncil.queryContextGraph", "title": "Query Shared Context Graph", "category": "Pets Council" },
