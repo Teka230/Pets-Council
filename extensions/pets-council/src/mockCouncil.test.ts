@@ -9,3 +9,27 @@ test('is deterministic and returns zero to two suggestions per role',()=>{assert
 test('supports a silent strategist',()=>{assert.deepEqual(reviewMockTurn(SAMPLE_COUNCIL_TURN).roles.find((role)=>role.role==='strategist')?.suggestions,[]);});
 test('Greffier preserves a Git checkpoint without assistant response',()=>{const turn:CouncilTurn={...SAMPLE_COUNCIL_TURN,assistantResponse:''};assert.equal(reviewMockTurn(turn).roles.find((role)=>role.role==='notetaker')?.suggestions.length,1);});
 test('all companions stay silent without live evidence',()=>{const turn:CouncilTurn={...SAMPLE_COUNCIL_TURN,capture:{mode:'live',capturedAt:'2026-07-25T13:35:14.000Z',warnings:[]},userMessage:'placeholder',assistantResponse:'placeholder',workspace:{},git:undefined};assert.ok(reviewMockTurn(turn).roles.every((role)=>role.suggestions.length===0));});
+test('anchors deterministic prompts to the open workspace, not Pets Council',()=>{
+  const turn:CouncilTurn={
+    ...SAMPLE_COUNCIL_TURN,
+    workspace:{name:'Pets-run',activeFile:'src/main.ts'},
+    git:{branch:'main',changedFiles:['src/main.ts','src/game.ts','src/ui.ts','src/audio.ts'],diffSummary:'game loop changes'}
+  };
+  const review=reviewMockTurn(turn);
+  const prompts=review.roles.flatMap((role)=>role.suggestions.map((suggestion)=>suggestion.prompt)).join('\n');
+  assert.match(prompts,/Pets-run/);
+  assert.doesNotMatch(prompts,/Pets Council/);
+  assert.doesNotMatch(prompts,/native overlay/);
+  assert.doesNotMatch(prompts,/Council suggestion clicks/);
+});
+test('does not inject Pets Council product UI guidance into foreign workspaces',()=>{
+  const turn:CouncilTurn={
+    ...SAMPLE_COUNCIL_TURN,
+    workspace:{name:'Pets-run',activeFile:'src/main.ts'},
+    git:undefined
+  };
+  const guardian=reviewMockTurn(turn).roles.find((role)=>role.role==='guardian');
+  const prompts=(guardian?.suggestions??[]).map((suggestion)=>suggestion.prompt).join('\n');
+  assert.match(prompts,/src\/main\.ts/);
+  assert.doesNotMatch(prompts,/Council suggestion clicks|Codex approvals|interaction boundary/);
+});
