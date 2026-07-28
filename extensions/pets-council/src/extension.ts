@@ -7,6 +7,7 @@ import { SuggestionUsageSignalStore, type SuggestionUsageAction } from './memory
 import { buildPetSnapshots, type PetMotionPreference } from './pets/petPack';
 import { NativeOverlayBridge } from './pets/nativeOverlayBridge';
 import { buildCouncilTurnFromCompletedCodexTurn } from './runtime/councilBridge';
+import { projectConversationHistory, type ConversationHistoryState } from './runtime/conversationHistory';
 import { CodexRuntimeService, resolveCodexBinary } from './runtime/service';
 import { CodexSessionStore, createWorkspaceSessionKey } from './runtime/sessionStore';
 import { createStdioCodexTransport } from './runtime/stdioTransport';
@@ -52,11 +53,14 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
   const panel=vscode.window.createWebviewPanel('petsCouncil.panel','Pets Council',vscode.ViewColumn.Beside,{enableScripts:true,retainContextWhenHidden:true});
   const deterministic=new DeterministicCouncilProvider(),intelligent=new CodexCouncilProvider(runtime,deterministic);
   let disposed=false,renderSequence=0,reviewSequence=0,currentTurn:CouncilTurn|undefined,currentReview:CouncilReview|undefined,councilState:CouncilReviewState=idleCouncilState(),lastBridgedTurnId:string|undefined;
+  let conversationHistory:ConversationHistoryState={turns:[]};
 
+  const syncConversation=():void=>{conversationHistory=projectConversationHistory(conversationHistory,runtime.status);};
   const renderCurrent=():void=>{
     if(disposed||!currentTurn||!currentReview)return;
+    syncConversation();
     const pets=buildPetSnapshots(currentReview,councilState,runtime.status);
-    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,readPetMotionPreference(),createNonce());
+    panel.webview.html=renderCouncilHtml(currentTurn,currentReview,councilState,runtime.status,pets,conversationHistory.turns,readPetMotionPreference(),createNonce());
     void nativeOverlay.publish({visible:true,companions:pets});
   };
   const reviewCompletedTurn=async(turn:CouncilTurn):Promise<void>=>{
@@ -85,7 +89,7 @@ function showCouncilPanel(runtime:CodexRuntimeService,graphStore:SharedContextGr
     try{await usageStore.record(currentTurn,suggestion,action,councilState.provider);}catch(error){void vscode.window.showErrorMessage(error instanceof Error?error.message:String(error));}
   };
 
-  const runtimeSubscription=runtime.onDidChange(()=>{if(!bridgeCompletedTurn())renderCurrent();});
+  const runtimeSubscription=runtime.onDidChange(()=>{syncConversation();if(!bridgeCompletedTurn())renderCurrent();});
   const messageSubscription=panel.webview.onDidReceiveMessage(async(message:unknown)=>{
     if(!isCouncilWebviewMessage(message))return;
     switch(message.type){
