@@ -20,7 +20,7 @@ export type CodexThreadInfo = Readonly<{
   reasoningEffort?: string;
   approvalPolicy?: string;
   approvalsReviewer?: string;
-  completedTurns: readonly CodexRestoredTurn[];
+  completedTurns?: readonly CodexRestoredTurn[];
   lastCompletedTurn?: CodexRestoredTurn;
 }>;
 export type CodexThreadPhase = 'none' | 'starting' | 'ready' | 'error';
