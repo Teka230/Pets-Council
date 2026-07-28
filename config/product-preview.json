@@ -1,0 +1,14 @@
+{
+  "previewVersion": "0.1.0-preview.1",
+  "nameShort": "Pets Council Preview",
+  "nameLong": "Pets Council Desktop Preview",
+  "applicationName": "pets-council-preview",
+  "dataFolderName": ".pets-council-preview",
+  "urlProtocol": "pets-council-preview",
+  "win32AppUserModelId": "Teka230.PetsCouncilPreview",
+  "win32MutexName": "pets-council-preview",
+  "win32RegValueName": "PetsCouncilPreview",
+  "darwinBundleIdentifier": "dev.pets-council.preview",
+  "linuxIconName": "pets-council-preview",
+  "quality": "preview"
+}

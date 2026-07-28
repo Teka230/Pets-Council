@@ -1,6 +1,6 @@
 {
   "name": "pets-council-workspace",
-  "version": "0.11.0",
+  "version": "0.1.0-preview.1",
   "private": true,
   "description": "A Code - OSS distribution where Codex answers, living companions review, and the user decides.",
   "license": "MIT",
@@ -16,7 +16,10 @@
     "native:apply": "node scripts/apply-native-overlay.mjs",
     "native:verify": "node scripts/verify-native-overlay.mjs",
     "native:verify-source": "node scripts/verify-native-overlay.mjs --source",
+    "product:brand": "node scripts/apply-product-branding.mjs",
     "desktop:smoke": "node scripts/desktop-smoke.mjs --compile-only",
-    "desktop:launch": "node scripts/desktop-smoke.mjs"
+    "desktop:launch": "node scripts/desktop-smoke.mjs",
+    "package:preview:prepare": "node scripts/package-preview.mjs --prepare-only",
+    "package:preview": "node scripts/package-preview.mjs"
   }
 }
