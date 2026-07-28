@@ -25,7 +25,7 @@ export type PetArtworkMetadata = Readonly<{
 export type PetDefinition = Readonly<{ id:string;name:string;glyph:string;description:string;atlas?:PetAtlas;artwork?:PetArtworkMetadata }>;
 export type PetRoleAssignment = Readonly<{ role:CouncilRoleId;petId:string;anchor?:PetAnchor }>;
 export type PetPackManifest = Readonly<{ schemaVersion:1;id:string;name:string;version:string;pets:readonly PetDefinition[];assignments:readonly PetRoleAssignment[] }>;
-export type PetSnapshot = Readonly<{ role:CouncilRoleId;petId:string;name:string;glyph:string;state:PetVisualState;suggestionCount:number;anchor:PetAnchor;atlas?:PetAtlas;artwork?:PetArtworkMetadata }>;
+export type PetSnapshot = Readonly<{ role:CouncilRoleId;petId:string;name:string;glyph:string;state:PetVisualState;suggestionCount:number;anchor:PetAnchor;atlas?:PetAtlas;artwork?:PetArtworkMetadata;placement?:Readonly<{x:number;y:number}> }>;
 
 const STATE_CELLS:Readonly<Record<PetVisualState,PetAtlasCell>>={
   idle:{column:0,row:0},thinking:{column:1,row:0},suggestion:{column:2,row:0},silent:{column:3,row:0},approval:{column:4,row:0},error:{column:5,row:0}
